@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,8 +12,8 @@
 from flask import Blueprint, current_app
 from flask_restful import Api
 
+from taipy.common.logger._taipy_logger import _TaipyLogger
 from taipy.core.common._utils import _load_fct
-from taipy.logger._taipy_logger import _TaipyLogger
 
 from ..extensions import apispec
 from .middlewares._middleware import _using_enterprise

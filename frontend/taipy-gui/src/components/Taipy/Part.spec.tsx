@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -29,6 +29,16 @@ describe("Part Component", () => {
         const elt = getByText("bar");
         expect(elt).toHaveClass("taipy-part");
     })
+    it("displays with width=70%", async () => {
+        const { getByText } = render(<Part width="70%">bar</Part>);
+        const elt = getByText("bar");
+        expect(elt).toHaveStyle('width: 70%');
+    });
+    it("displays with width=500", async () => {
+        const { getByText } = render(<Part width={500}>bar</Part>);
+        const elt = getByText("bar");
+        expect(elt).toHaveStyle('width: 500px');
+    });
     it("renders an iframe", async () => {
         const {getByText} = render(<Part className="taipy-part" page="http://taipy.io">bar</Part>);
         const elt = getByText("bar");

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,10 +9,9 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-from typing import Callable, List, Optional, Type, Union
+from typing import Callable, List, Optional, Type, Union, cast
 
-from taipy.config import Config
-from taipy.config.common.scope import Scope
+from taipy.common.config import Config
 
 from .._entity._entity_ids import _EntityIds
 from .._manager._manager import _Manager
@@ -20,12 +19,20 @@ from .._orchestrator._abstract_orchestrator import _AbstractOrchestrator
 from .._repository._abstract_repository import _AbstractRepository
 from .._version._version_manager_factory import _VersionManagerFactory
 from .._version._version_mixin import _VersionMixin
+from ..common.scope import Scope
 from ..common.warn_if_inputs_not_ready import _warn_if_inputs_not_ready
 from ..config.task_config import TaskConfig
 from ..cycle.cycle_id import CycleId
 from ..data._data_manager_factory import _DataManagerFactory
 from ..exceptions.exceptions import NonExistingTask
 from ..notification import EventEntityType, EventOperation, Notifier, _make_event
+from ..reason import (
+    DataNodeEditInProgress,
+    DataNodeIsNotWritten,
+    EntityDoesNotExist,
+    EntityIsNotSubmittableEntity,
+    ReasonCollection,
+)
 from ..scenario.scenario_id import ScenarioId
 from ..sequence.sequence_id import SequenceId
 from ..submission.submission import Submission
@@ -45,10 +52,21 @@ class _TaskManager(_Manager[Task], _VersionMixin):
         return _OrchestratorFactory._build_orchestrator()
 
     @classmethod
-    def _set(cls, task: Task):
+    def _set(cls, task: Task) -> None:
         cls.__save_data_nodes(task.input.values())
         cls.__save_data_nodes(task.output.values())
         super()._set(task)
+
+    @classmethod
+    def _get_owner_id(
+        cls, scope, cycle_id, scenario_id
+    ) -> Union[Optional[SequenceId], Optional[ScenarioId], Optional[CycleId]]:
+        if scope == Scope.SCENARIO:
+            return scenario_id
+        elif scope == Scope.CYCLE:
+            return cycle_id
+        else:
+            return None
 
     @classmethod
     def _bulk_get_or_create(
@@ -72,13 +90,7 @@ class _TaskManager(_Manager[Task], _VersionMixin):
             ]
             task_config_data_nodes = [data_nodes[dn_config] for dn_config in task_dn_configs]
             scope = min(dn.scope for dn in task_config_data_nodes) if len(task_config_data_nodes) != 0 else Scope.GLOBAL
-            owner_id: Union[Optional[SequenceId], Optional[ScenarioId], Optional[CycleId]]
-            if scope == Scope.SCENARIO:
-                owner_id = scenario_id
-            elif scope == Scope.CYCLE:
-                owner_id = cycle_id
-            else:
-                owner_id = None
+            owner_id = cls._get_owner_id(scope, cycle_id, scenario_id)
 
             tasks_configs_and_owner_id.append((task_config, owner_id))
 
@@ -101,10 +113,11 @@ class _TaskManager(_Manager[Task], _VersionMixin):
                     for output_config in [Config.data_nodes[dnc.id] for dnc in task_config.output_configs]
                 ]
                 skippable = task_config.skippable
+
                 task = Task(
                     str(task_config.id),
                     dict(**task_config._properties),
-                    task_config.function,
+                    cast(Callable, task_config.function),
                     inputs,
                     outputs,
                     owner_id=owner_id,
@@ -128,20 +141,20 @@ class _TaskManager(_Manager[Task], _VersionMixin):
         return cls._repository._load_all(filters)
 
     @classmethod
-    def __save_data_nodes(cls, data_nodes):
+    def __save_data_nodes(cls, data_nodes) -> None:
         data_manager = _DataManagerFactory._build_manager()
         for i in data_nodes:
             data_manager._set(i)
 
     @classmethod
-    def _hard_delete(cls, task_id: TaskId):
+    def _hard_delete(cls, task_id: TaskId) -> None:
         task = cls._get(task_id)
         entity_ids_to_delete = cls._get_children_entity_ids(task)
         entity_ids_to_delete.task_ids.add(task.id)
         cls._delete_entities_of_multiple_types(entity_ids_to_delete)
 
     @classmethod
-    def _get_children_entity_ids(cls, task: Task):
+    def _get_children_entity_ids(cls, task: Task) -> _EntityIds:
         entity_ids = _EntityIds()
 
         from ..job._job_manager_factory import _JobManagerFactory
@@ -162,10 +175,27 @@ class _TaskManager(_Manager[Task], _VersionMixin):
         return entity_ids
 
     @classmethod
-    def _is_submittable(cls, task: Union[Task, TaskId]) -> bool:
+    def _is_submittable(cls, task: Union[Task, TaskId]) -> ReasonCollection:
+        reason_collection = ReasonCollection()
+
         if isinstance(task, str):
+            task_id = task
             task = cls._get(task)
-        return isinstance(task, Task) and all(input_dn.is_ready_for_reading for input_dn in task.input.values())
+            if task is None:
+                reason_collection._add_reason(task_id, EntityDoesNotExist(task_id))
+
+        if not isinstance(task, Task):
+            reason_collection._add_reason(str(task), EntityIsNotSubmittableEntity(str(task)))
+        else:
+            data_manager = _DataManagerFactory._build_manager()
+            for node in task.input.values():
+                node = data_manager._get(node)
+                if node._edit_in_progress:
+                    reason_collection._add_reason(node.id, DataNodeEditInProgress(node.id))
+                if not node._last_edit_date:
+                    reason_collection._add_reason(node.id, DataNodeIsNotWritten(node.id))
+
+        return reason_collection
 
     @classmethod
     def _submit(
@@ -174,7 +204,7 @@ class _TaskManager(_Manager[Task], _VersionMixin):
         callbacks: Optional[List[Callable]] = None,
         force: bool = False,
         wait: bool = False,
-        timeout: Optional[Union[float, int]] = None,
+        timeout: Union[float, int, None] = None,
         check_inputs_are_ready: bool = True,
         **properties,
     ) -> Submission:
@@ -201,3 +231,14 @@ class _TaskManager(_Manager[Task], _VersionMixin):
         for fil in filters:
             fil.update({"config_id": config_id})
         return cls._repository._load_all(filters)
+
+    @classmethod
+    def _can_duplicate(cls, task: Union[Task, TaskId]) -> ReasonCollection:
+        reason_collector = ReasonCollection()
+        if isinstance(task, Task):
+            task_id = task.id
+        else:
+            task_id = task
+        if not cls._repository._exists(task_id):
+            reason_collector._add_reason(task_id, EntityDoesNotExist(task_id))
+        return reason_collector

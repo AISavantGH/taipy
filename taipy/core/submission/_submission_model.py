@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,36 +12,13 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
-from sqlalchemy import JSON, Boolean, Column, Enum, String, Table
-
 from .._repository._base_taipy_model import _BaseModel
-from .._repository.db._sql_base_model import mapper_registry
 from ..job.job_id import JobId
 from .submission_status import SubmissionStatus
 
 
-@mapper_registry.mapped
 @dataclass
 class _SubmissionModel(_BaseModel):
-    __table__ = Table(
-        "submission",
-        mapper_registry.metadata,
-        Column("id", String, primary_key=True),
-        Column("entity_id", String),
-        Column("entity_type", String),
-        Column("entity_config_id", String),
-        Column("job_ids", JSON),
-        Column("properties", JSON),
-        Column("creation_date", String),
-        Column("submission_status", Enum(SubmissionStatus)),
-        Column("version", String),
-        Column("is_completed", Boolean),
-        Column("is_abandoned", Boolean),
-        Column("is_canceled", Boolean),
-        Column("running_jobs", JSON),
-        Column("blocked_jobs", JSON),
-        Column("pending_jobs", JSON),
-    )
     id: str
     entity_id: str
     entity_type: str

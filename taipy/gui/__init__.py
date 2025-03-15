@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -26,7 +26,9 @@ Here is how you can create your first Taipy User Interface:
      Copy these two lines into a file called *taipy_app.py*.
      ```py title="taipy_app.py"
      from taipy import Gui
-     Gui("# Hello Taipy!").run()
+
+     if __name__ == "__main__":
+         Gui("# Hello Taipy!").run()
      ```
    - Install Taipy:
      ```
@@ -46,8 +48,8 @@ application.
     add functionality to Taipy GUI:
 
     - [`python-magic`](https://pypi.org/project/python-magic/): identifies image format
-      from byte buffers so the [`image`](../../gui/viselements/image.md) control can
-      display them, and so that [`file_download`](../../gui/viselements/file_download.md)
+      from byte buffers so the [`image`](../../../../refmans/gui/viselements/generic/image.md) control can
+      display them, and so that [`file_download`](../../../../refmans/gui/viselements/generic/file_download.md)
       can request the browser to display the image content when relevant.<br/>
       You can install that package with the regular `pip install python-magic` command
       (then potentially `pip install python-magic` on Windows),
@@ -75,6 +77,7 @@ from ._renderers import Html, Markdown
 from ._renderers.json import JsonAdapter
 from .gui_actions import (
     broadcast_callback,
+    close_notification,
     download,
     get_module_context,
     get_module_name_from_state,
@@ -85,6 +88,7 @@ from .gui_actions import (
     invoke_long_callback,
     navigate,
     notify,
+    query_local_storage,
     resume_control,
 )
 from .icon import Icon
@@ -93,8 +97,8 @@ from .partial import Partial
 from .state import State
 from .utils import is_debugging
 
-if find_spec("taipy") and find_spec("taipy.config"):
-    from taipy.config import _inject_section
+if find_spec("taipy") and find_spec("taipy.common.config"):
+    from taipy.common.config import _inject_section
 
     from ._default_config import default_config
     from ._gui_section import _GuiSection

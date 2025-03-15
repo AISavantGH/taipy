@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -17,7 +17,7 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 
 import { LocalizationProvider } from "@mui/x-date-pickers";
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFnsV3";
 
 import DateSelector from "./DateSelector";
 import { TaipyContext } from "../../context/taipyContext";
@@ -96,6 +96,20 @@ describe("DateSelector Component", () => {
         expect(input).toBeInTheDocument();
         expect(cleanText(input?.value || "")).toEqual("01/01/2001");
     });
+    it("displays the default value with format", async () => {
+        render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateSelector
+                    defaultDate="2011-01-01T00:00:01.001Z"
+                    date={undefined as unknown as string}
+                    format="yy-MM-dd"
+                />
+            </LocalizationProvider>
+        );
+        const input = document.querySelector("input");
+        expect(input).toBeInTheDocument();
+        expect(cleanText(input?.value || "")).toEqual("11-01-01");
+    });
     it("shows label", async () => {
         const { getByLabelText } = render(
             <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -109,6 +123,24 @@ describe("DateSelector Component", () => {
         );
         const input = getByLabelText("a label") as HTMLInputElement;
         expect(input.value).toBe("01/01/2001");
+    });
+    it("displays with width=70%", async () => {
+        render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateSelector date={curDateStr} width="70%" />
+            </LocalizationProvider>
+        );
+        const elt = document.querySelector(".MuiFormControl-root");
+        expect(elt).toHaveStyle("max-width: 70%");
+    });
+    it("displays with width=500", async () => {
+        render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateSelector date={curDateStr} width={500} />
+            </LocalizationProvider>
+        );
+        const elt = document.querySelector(".MuiFormControl-root");
+        expect(elt).toHaveStyle("max-width: 500px");
     });
     it("is disabled", async () => {
         render(
@@ -175,6 +207,15 @@ describe("DateSelector with time Component", () => {
         const elt = getByTestId("CalendarIcon");
         expect(elt.parentElement?.tagName).toBe("BUTTON");
     });
+    it("renders with analog time picker", async () => {
+        const { getByTestId } = render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateSelector date={curDateStr} withTime={true} analogic={true}/>
+            </LocalizationProvider>
+        );
+        const elt = getByTestId("CalendarIcon");
+        expect(elt.parentElement?.tagName).toBe("BUTTON");
+    });
     it("displays the right info for string", async () => {
         const { getByTestId } = render(
             <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -198,6 +239,20 @@ describe("DateSelector with time Component", () => {
         const input = document.querySelector("input");
         expect(input).toBeInTheDocument();
         expect(cleanText(input?.value || "").toLocaleLowerCase()).toEqual("01/01/2001 01:01 am");
+    });
+    it("displays the default value with format", async () => {
+        render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateSelector
+                    defaultDate="2011-01-01T00:10:01.001Z"
+                    date={undefined as unknown as string}
+                    format="yy-MM-dd mm"
+                />
+            </LocalizationProvider>
+        );
+        const input = document.querySelector("input");
+        expect(input).toBeInTheDocument();
+        expect(cleanText(input?.value || "")).toEqual("11-01-01 10");
     });
     it("is disabled", async () => {
         render(

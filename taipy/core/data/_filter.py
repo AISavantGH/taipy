@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -135,7 +135,7 @@ class _FilterDataNode:
         elif join_operator == JoinOperator.OR:
             how = "outer"
         else:
-            return NotImplementedError
+            raise NotImplementedError
 
         filtered_df_data = [
             _FilterDataNode.__filter_dataframe_per_key_value(df_data, key, value, operator)
@@ -177,7 +177,7 @@ class _FilterDataNode:
         elif join_operator == JoinOperator.OR:
             join_conditions = reduce(or_, conditions)
         else:
-            return NotImplementedError
+            raise NotImplementedError
 
         return data[join_conditions]
 
@@ -199,7 +199,7 @@ class _FilterDataNode:
         if operator == Operator.GREATER_OR_EQUAL:
             return array_data[:, key] >= value
 
-        return NotImplementedError
+        raise NotImplementedError
 
     @staticmethod
     def __filter_list(list_data: List, operators: Union[List, Tuple], join_operator=JoinOperator.AND):
@@ -218,7 +218,7 @@ class _FilterDataNode:
                 return list({frozenset(item.items()) for item in merged_list})
             return list(set(merged_list))
         else:
-            return NotImplementedError
+            raise NotImplementedError
 
     @staticmethod
     def __filter_list_per_key_value(list_data: List, key: str, value, operator: Operator):

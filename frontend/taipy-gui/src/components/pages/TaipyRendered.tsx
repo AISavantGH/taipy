@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,19 +11,19 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import React, { useEffect, useState, useContext, ComponentType } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import axios from "axios";
-import JsxParser from "react-jsx-parser";
-import { useLocation } from "react-router-dom";
-import { Helmet } from "react-helmet-async";
 import { ErrorBoundary } from "react-error-boundary";
+import { Helmet } from "react-helmet-async";
+import JsxParser from "react-jsx-parser";
+import { useLocation } from "react-router";
 
 import { PageContext, TaipyContext } from "../../context/taipyContext";
-import { getRegisteredComponents } from "../Taipy";
-import { unregisteredRender, renderError } from "../Taipy/Unregistered";
 import { createPartialAction } from "../../context/taipyReducers";
+import { emptyArray, getBaseURL } from "../../utils";
 import ErrorFallback from "../../utils/ErrorBoundary";
-import { getBaseURL } from "../../utils";
+import { getRegisteredComponents } from "../Taipy";
+import { renderError, unregisteredRender } from "../Taipy/Unregistered";
 
 interface TaipyRenderedProps {
     path?: string;
@@ -42,6 +42,7 @@ interface AxiosRenderer {
     style: string;
     head: HeadProps[];
     context: string;
+    scriptPaths: string[];
 }
 
 // set global style the traditional way
@@ -61,7 +62,17 @@ const setStyle = (id: string, styleString: string): void => {
     }
 };
 
-const emptyArray: string[] = [];
+// set script tag for the page
+const setScript = (id: string, scriptPaths: string[]): void => {
+    document.querySelectorAll(`script[id^="${id}_"]`).forEach(script => script.remove());
+    scriptPaths.forEach((path, index) => {
+        const script = document.createElement("script");
+        script.id = `${id}_${index}`;
+        script.src = path;
+        script.defer = true;
+        document.head.append(script);
+    });
+};
 
 interface PageState {
     jsx?: string;
@@ -97,20 +108,23 @@ const TaipyRendered = (props: TaipyRenderedProps) => {
                         setPageState({ module: result.data.context, jsx: result.data.jsx });
                     }
                     if (!fromBlock) {
-                        setStyle("Taipy_style", result.data.style || "");
+                        setStyle(
+                            path == "/TaiPy_root_page" ? "Taipy_root_style" : "Taipy_style",
+                            result.data.style || "",
+                        );
                         Array.isArray(result.data.head) && setHead(result.data.head);
+                        Array.isArray(result.data.scriptPaths) && setScript("Taipy_script", result.data.scriptPaths);
                     }
                 })
-                .catch((error) =>
+                .catch((error) => {
+                    const res =
+                        error.response?.data && /<p\sclass=\"errormsg\">([\s\S]*?)<\/p>/gm.exec(error.response?.data);
                     setPageState({
-                        jsx: `<h1>${
-                            error.response?.data ||
-                            `No data fetched from backend from ${
-                                path === "/TaiPy_root_page" ? baseURL : baseURL + path
-                            }`
-                        }</h1><br></br>${error}`,
-                    })
-                );
+                        jsx: `<h1>${res ? res[0] : "Unknown Error"}</h1><h2>No data fetched from backend from ${
+                            path === "/TaiPy_root_page" ? baseURL : baseURL + path
+                        }</h2><br></br>${res[0] ? "" : error}`,
+                    });
+                });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [path, state.id, dispatch, partial, fromBlock, baseURL]);
@@ -126,7 +140,7 @@ const TaipyRendered = (props: TaipyRenderedProps) => {
                 <JsxParser
                     disableKeyGeneration={true}
                     bindings={state.data}
-                    components={getRegisteredComponents() as Record<string, ComponentType>}
+                    components={getRegisteredComponents()}
                     jsx={pageState.jsx}
                     renderUnrecognized={unregisteredRender}
                     allowUnknownElements={false}

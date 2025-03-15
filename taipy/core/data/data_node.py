@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,36 +9,57 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
+import functools
 import os
+import typing
 import uuid
 from abc import abstractmethod
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
 
 import networkx as nx
 
-from taipy.config.common._validate_id import _validate_id
-from taipy.config.common.scope import Scope
-from taipy.logger._taipy_logger import _TaipyLogger
+from taipy.common.config import Config
+from taipy.common.config.common._validate_id import _validate_id
+from taipy.common.logger._taipy_logger import _TaipyLogger
 
 from .._entity._entity import _Entity
 from .._entity._labeled import _Labeled
 from .._entity._properties import _Properties
+from .._entity._ready_to_run_property import _ReadyToRunProperty
 from .._entity._reload import _Reloader, _self_reload, _self_setter
 from .._version._version_manager_factory import _VersionManagerFactory
-from ..common._warnings import _warn_deprecated
+from ..common.scope import Scope
 from ..exceptions.exceptions import DataNodeIsBeingEdited, NoData
 from ..job.job_id import JobId
 from ..notification.event import Event, EventEntityType, EventOperation, _make_event
+from ..reason import DataNodeEditInProgress, DataNodeIsNotWritten
 from ._filter import _FilterDataNode
-from .data_node_id import DataNodeId, Edit
+from .data_node_id import EDIT_COMMENT_KEY, EDIT_EDITOR_ID_KEY, EDIT_JOB_ID_KEY, EDIT_TIMESTAMP_KEY, DataNodeId, Edit
 from .operator import JoinOperator
+
+
+def _update_ready_for_reading(fct):
+    # This decorator must be wrapped before self_setter decorator as self_setter will run the function twice.
+    @functools.wraps(fct)
+    def _recompute_is_ready_for_reading(dn: "DataNode", *args, **kwargs):
+        fct(dn, *args, **kwargs)
+        if dn._edit_in_progress:
+            _ReadyToRunProperty._add(dn, DataNodeEditInProgress(dn.id))
+        else:
+            _ReadyToRunProperty._remove(dn, DataNodeEditInProgress(dn.id))
+        if not dn._last_edit_date:
+            _ReadyToRunProperty._add(dn, DataNodeIsNotWritten(dn.id))
+        else:
+            _ReadyToRunProperty._remove(dn, DataNodeIsNotWritten(dn.id))
+
+    return _recompute_is_ready_for_reading
 
 
 class DataNode(_Entity, _Labeled):
     """Reference to a dataset.
 
-    A Data Node is an abstract class that holds metadata related to the dataset it refers to.
+    A Data Node is an abstract class that holds metadata related to the data it refers to.
     In particular, a data node holds the name, the scope, the owner identifier, the last
     edit date, and some additional properties of the data.<br/>
     A Data Node also contains information and methods needed to access the dataset. This
@@ -46,47 +67,54 @@ class DataNode(_Entity, _Labeled):
     SQL Data Node, CSV Data Node, ...).
 
     !!! note
-        It is recommended not to instantiate subclasses of `DataNode` directly.
+        It is not recommended to instantiate subclasses of `DataNode` directly. Instead,
+        you have two ways:
 
-    Attributes:
-        config_id (str): Identifier of the data node configuration. It must be a valid Python
-            identifier.
-        scope (Scope^): The scope of this data node.
-        id (str): The unique identifier of this data node.
-        name (str): A user-readable name of this data node.
-        owner_id (str): The identifier of the owner (sequence_id, scenario_id, cycle_id) or
-            None.
-        parent_ids (Optional[Set[str]]): The set of identifiers of the parent tasks.
-        last_edit_date (datetime): The date and time of the last modification.
-        edits (List[Edit^]): The list of Edits (an alias for dict) containing metadata about each
-            data edition including but not limited to timestamp, comments, job_id:
-            timestamp: The time instant of the writing
-            comments: Representation of a free text to explain or comment on a data change
-            job_id: Only populated when the data node is written by a task execution and corresponds to the job's id.
-            Additional metadata related to the edition made to the data node can also be provided in Edits.
-        version (str): The string indicates the application version of the data node to
-            instantiate. If not provided, the current version is used.
-        validity_period (Optional[timedelta]): The duration implemented as a timedelta since the last edit date for
-            which the data node can be considered up-to-date. Once the validity period has passed, the data node is
-            considered stale and relevant tasks will run even if they are skippable (see the
-            [Task management page](../core/entities/task-mgt.md) for more details).
-            If _validity_period_ is set to `None`, the data node is always up-to-date.
-        edit_in_progress (bool): True if the data node is locked for modification. False
-            otherwise.
-        editor_id (Optional[str]): The identifier of the user who is currently editing the data node.
-        editor_expiration_date (Optional[datetime]): The expiration date of the editor lock.
-        kwargs: A dictionary of additional properties.
+        1. Create a Scenario using the `create_scenario()^` function. Related data nodes
+            will be created automatically. Please refer to the `Scenario^` class for more
+            information.
+        2. Configure a `DataNodeConfig^` with the various configuration methods form `Config^`
+            and use the `create_global_data_node()^` function as illustrated in the following
+            example.
+
+    A data node's attributes are populated based on its configuration `DataNodeConfig^`.
+
+    !!! Example
+
+        ```python
+        import taipy as tp
+        from taipy import Config
+
+        if __name__ == "__main__":
+            # Configure a global data node
+            dataset_cfg = Config.configure_data_node("my_dataset", scope=tp.Scope.GLOBAL)
+
+            # Instantiate a global data node
+            dataset = tp.create_global_data_node(dataset_cfg)
+
+            # Retrieve the list of all data nodes
+            all_data_nodes = tp.get_data_nodes()
+
+            # Write the data
+            dataset.write("Hello, World!")
+
+            # Read the data
+            print(dataset.read())
+        ```
     """
 
     _ID_PREFIX = "DATANODE"
     __ID_SEPARATOR = "_"
-    __logger = _TaipyLogger._get_logger()
+    _MANAGER_NAME: str = "data"
+    _logger = _TaipyLogger._get_logger()
     _REQUIRED_PROPERTIES: List[str] = []
-    _MANAGER_NAME = "data"
-    __PATH_KEY = "path"
+    _PATH_KEY = "path"
     __EDIT_TIMEOUT = 30
 
     _TAIPY_PROPERTIES: Set[str] = set()
+
+    id: DataNodeId
+    """The unique identifier of the data node."""
 
     def __init__(
         self,
@@ -103,9 +131,9 @@ class DataNode(_Entity, _Labeled):
         editor_id: Optional[str] = None,
         editor_expiration_date: Optional[datetime] = None,
         **kwargs,
-    ):
+    ) -> None:
         self._config_id = _validate_id(config_id)
-        self.id = id or DataNodeId(self.__ID_SEPARATOR.join([self._ID_PREFIX, self.config_id, str(uuid.uuid4())]))
+        self.id = id or self._new_id(self._config_id)
         self._owner_id = owner_id
         self._parent_ids = parent_ids or set()
         self._scope = scope
@@ -117,61 +145,88 @@ class DataNode(_Entity, _Labeled):
         self._editor_expiration_date: Optional[datetime] = editor_expiration_date
 
         # Track edits
-        self._edits = edits or []
+        self._edits: List[Edit] = edits or []
 
-        self._properties = _Properties(self, **kwargs)
+        self._properties: _Properties = _Properties(self, **kwargs)
+
+    def __eq__(self, other) -> bool:
+        """Check if two data nodes are equal."""
+        return isinstance(other, DataNode) and self.id == other.id
+
+    def __ne__(self, other) -> bool:
+        """Check if two data nodes are different."""
+        return not self == other
+
+    def __hash__(self) -> int:
+        """Hash the data node."""
+        return hash(self.id)
+
+    def __getstate__(self) -> Dict[str, Any]:
+        return vars(self)
+
+    def __setstate__(self, state) -> None:
+        vars(self).update(state)
+
+    def __getitem__(self, item) -> Any:
+        data = self._read()
+        return _FilterDataNode._filter_by_key(data, item)
 
     @property
-    def config_id(self):
+    def config_id(self) -> str:
+        """Identifier of the data node configuration. It must be a valid Python identifier."""
         return self._config_id
 
     @property
-    def owner_id(self):
+    def owner_id(self) -> Optional[str]:
+        """The identifier of the owner (scenario_id, cycle_id or None)."""
         return self._owner_id
-
-    def get_parents(self):
-        """Get all parents of this data node."""
-        from ... import core as tp
-
-        return tp.get_parents(self)
 
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
-    def parent_ids(self):
-        """List of parent ids of this data node."""
+    def parent_ids(self) -> Set[str]:
+        """The set of identifiers of the parent tasks."""
         return self._parent_ids
 
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
-    def edits(self):
-        """Get all `Edit^`s of this data node."""
+    def edits(self) -> List[Edit]:
+        """The list of Edits.
+
+        The list of Edits (an alias for dict) containing metadata about each
+        data edition including but not limited to:
+            <ul><li>timestamp: The time instant of the writing </li>
+            <li>comments: Representation of a free text to explain or comment on a data change</li>
+            <li>job_id: Only populated when the data node is written by a task execution and
+                corresponds to the job's id.</li></ul>
+        Additional metadata related to the edition made to the data node can also be provided in Edits.
+        """
         return self._edits
 
-    def get_last_edit(self) -> Optional[Edit]:
-        """Get last `Edit^` of this data node.
-
-        Returns:
-            None if there has been no `Edit^` on this data node.
-        """
-        return self._edits[-1] if self._edits else None
+    @edits.setter  # type: ignore
+    @_self_setter(_MANAGER_NAME)
+    def edits(self, val):
+        self._edits = val
 
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
-    def last_edit_date(self):
-        last_modified_datetime = self.__get_last_modified_datetime()
-        if last_modified_datetime and last_modified_datetime > self._last_edit_date:
+    def last_edit_date(self) -> Optional[datetime]:
+        """The date and time of the last modification."""
+        last_modified_datetime = self._get_last_modified_datetime(self._properties.get(self._PATH_KEY, None))
+        if last_modified_datetime and last_modified_datetime > self._last_edit_date:  # type: ignore
             return last_modified_datetime
         else:
             return self._last_edit_date
 
     @last_edit_date.setter  # type: ignore
+    @_update_ready_for_reading
     @_self_setter(_MANAGER_NAME)
     def last_edit_date(self, val):
         self._last_edit_date = val
 
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
-    def scope(self):
+    def scope(self) -> Scope:
+        """The data node scope."""
         return self._scope
 
     @scope.setter  # type: ignore
@@ -182,6 +237,15 @@ class DataNode(_Entity, _Labeled):
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
     def validity_period(self) -> Optional[timedelta]:
+        """The duration since the last edit date for which the data node is considered up-to-date.
+
+        The duration implemented as a timedelta since the last edit date for which the data node
+        can be considered up-to-date. Once the validity period has passed, the data node is
+        considered stale and relevant tasks will run even if they are skippable (see the
+        Task orchestration page of the user manual for more details).
+
+        If _validity_period_ is set to `None`, the data node is always up-to-date.
+        """
         return self._validity_period if self._validity_period else None
 
     @validity_period.setter  # type: ignore
@@ -203,6 +267,7 @@ class DataNode(_Entity, _Labeled):
 
     @property  # type: ignore
     def name(self) -> Optional[str]:
+        """A human-readable name of the data node."""
         return self.properties.get("name")
 
     @name.setter  # type: ignore
@@ -210,32 +275,29 @@ class DataNode(_Entity, _Labeled):
         self.properties["name"] = val
 
     @property
-    def version(self):
+    def version(self) -> str:
+        """The string indicates the application version of the data node to instantiate.
+
+        If not provided, the current version is used.
+        """
         return self._version
-
-    @property
-    def cacheable(self):
-        """Deprecated. Use `skippable` attribute of a `Task^` instead."""
-        _warn_deprecated("cacheable", suggest="the skippable feature")
-        return self.properties.get("cacheable", False)
-
-    @cacheable.setter
-    def cacheable(self, val):
-        _warn_deprecated("cacheable", suggest="the skippable feature")
 
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
-    def edit_in_progress(self):
+    def edit_in_progress(self) -> bool:
+        """True if the data node is locked for modification. False otherwise."""
         return self._edit_in_progress
 
     @edit_in_progress.setter  # type: ignore
+    @_update_ready_for_reading
     @_self_setter(_MANAGER_NAME)
     def edit_in_progress(self, val):
         self._edit_in_progress = val
 
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
-    def editor_id(self):
+    def editor_id(self) -> Optional[str]:
+        """The identifier of the user who is currently editing the data node."""
         return self._editor_id
 
     @editor_id.setter  # type: ignore
@@ -245,7 +307,8 @@ class DataNode(_Entity, _Labeled):
 
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
-    def editor_expiration_date(self):
+    def editor_expiration_date(self) -> Optional[datetime]:
+        """The expiration date of the editor lock."""
         return self._editor_expiration_date
 
     @editor_expiration_date.setter  # type: ignore
@@ -255,9 +318,9 @@ class DataNode(_Entity, _Labeled):
 
     @property  # type: ignore
     @_self_reload(_MANAGER_NAME)
-    def job_ids(self):
+    def job_ids(self) -> List[JobId]:
         """List of the jobs having edited this data node."""
-        return [edit.get("job_id") for edit in self.edits if edit.get("job_id")]
+        return [job_id for edit in self.edits if (job_id := edit.get("job_id"))]
 
     @property
     def properties(self):
@@ -265,51 +328,71 @@ class DataNode(_Entity, _Labeled):
         self._properties = _Reloader()._reload(self._MANAGER_NAME, self)._properties
         return self._properties
 
-    def _get_user_properties(self) -> Dict[str, Any]:
-        """Get user properties."""
-        return {key: value for key, value in self.properties.items() if key not in self._TAIPY_PROPERTIES}
+    @property  # type: ignore
+    @_self_reload(_MANAGER_NAME)
+    def is_ready_for_reading(self) -> bool:
+        """Indicate if this data node is ready for reading.
 
-    def __eq__(self, other):
-        return self.id == other.id
+        False if the data is locked for modification or if the data has never been written.
+        True otherwise.
+        """
+        if self._edit_in_progress:
+            return False
+        if not self._last_edit_date:
+            # Never been written so it is not up-to-date
+            return False
+        return True
 
-    def __ne__(self, other):
-        return not self == other
+    @property  # type: ignore
+    @_self_reload(_MANAGER_NAME)
+    def is_valid(self) -> bool:
+        """Indicate if this data node is valid.
 
-    def __hash__(self):
-        return hash(self.id)
+        False if the data ever been written or the expiration date has passed.<br/>
+        True otherwise.
+        """
+        if not self._last_edit_date:
+            # Never been written so it is not valid
+            return False
+        if not self._validity_period:
+            # No validity period and has already been written, so it is valid
+            return True
+        if datetime.now() > self.expiration_date:
+            # expiration_date has been passed
+            return False
+        return True
 
-    def __getstate__(self):
-        return vars(self)
+    @property
+    def is_up_to_date(self) -> bool:
+        """Indicate if this data node is up-to-date.
 
-    def __setstate__(self, state):
-        vars(self).update(state)
+        False if a preceding data node has been updated before the selected data node
+        or the selected data is invalid.<br/>
+        True otherwise.
+        """
+        if self.is_valid:
+            from ..scenario.scenario import Scenario
+            from ..taipy import get_parents
 
-    def __getattr__(self, attribute_name):
-        protected_attribute_name = _validate_id(attribute_name)
-        if protected_attribute_name in self._properties:
-            return self._properties[protected_attribute_name]
-        raise AttributeError(f"{attribute_name} is not an attribute of data node {self.id}")
-
-    def __get_last_modified_datetime(self) -> Optional[datetime]:
-        path = self._properties.get(self.__PATH_KEY, None)
-        if path and os.path.isfile(path):
-            return datetime.fromtimestamp(os.path.getmtime(path))
-
-        last_modified_datetime = None
-        if path and os.path.isdir(path):
-            for filename in os.listdir(path):
-                filepath = os.path.join(path, filename)
-                if os.path.isfile(filepath):
-                    file_mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-
-                    if last_modified_datetime is None or file_mtime > last_modified_datetime:
-                        last_modified_datetime = file_mtime
-
-        return last_modified_datetime
+            parent_scenarios: Set[Scenario] = get_parents(self)["scenario"]  # type: ignore
+            for parent_scenario in parent_scenarios:
+                for ancestor_node in nx.ancestors(parent_scenario._build_dag(), self):
+                    if (
+                        isinstance(ancestor_node, DataNode)
+                        and ancestor_node.last_edit_date
+                        and ancestor_node.last_edit_date > cast(datetime, self.last_edit_date)
+                    ):
+                        return False
+            return True
+        return False
 
     @classmethod
     @abstractmethod
     def storage_type(cls) -> str:
+        """The storage type of the data node.
+
+        Each subclass must implement this method exposing the data node storage type.
+        """
         raise NotImplementedError
 
     def read_or_raise(self) -> Any:
@@ -334,64 +417,150 @@ class DataNode(_Entity, _Labeled):
         try:
             return self.read_or_raise()
         except NoData:
-            self.__logger.warning(
-                f"Data node {self.id} from config {self.config_id} is being read but has never been " f"written."
+            self._logger.warning(
+                f"Data node {self.id} from config {self.config_id} is being read but has never been written."
             )
             return None
 
-    def append(self, data, job_id: Optional[JobId] = None, **kwargs: Dict[str, Any]):
+    def append(self, data, editor_id: Optional[str] = None, comment: Optional[str] = None, **kwargs: Any):
         """Append some data to this data node.
 
-        Parameters:
+        Arguments:
             data (Any): The data to write to this data node.
-            job_id (JobId^): An optional identifier of the writer.
-            **kwargs (dict[str, any]): Extra information to attach to the edit document
+            editor_id (str): An optional identifier of the editor.
+            comment (str): An optional comment to attach to the edit document.
+            **kwargs (Any): Extra information to attach to the edit document
                 corresponding to this write.
         """
         from ._data_manager_factory import _DataManagerFactory
 
+        if (
+            editor_id
+            and self.edit_in_progress
+            and self.editor_id != editor_id
+            and (not self.editor_expiration_date or self.editor_expiration_date > datetime.now())
+        ):
+            raise DataNodeIsBeingEdited(self.id, self.editor_id)
         self._append(data)
-        self.track_edit(job_id=job_id, **kwargs)
+        self.track_edit(editor_id=editor_id, comment=comment, **kwargs)
         self.unlock_edit()
         _DataManagerFactory._build_manager()._set(self)
 
-    def write(self, data, job_id: Optional[JobId] = None, **kwargs: Dict[str, Any]):
+    def write(
+        self,
+        data,
+        job_id: Optional[JobId] = None,
+        editor_id: Optional[str] = None,
+        comment: Optional[str] = None,
+        **kwargs: Any,
+    ):
         """Write some data to this data node.
 
-        Parameters:
+        once the data is written, the data node is unlocked and the edit is tracked.
+
+        Arguments:
             data (Any): The data to write to this data node.
-            job_id (JobId^): An optional identifier of the writer.
-            **kwargs (dict[str, any]): Extra information to attach to the edit document
+            job_id (JobId): An optional identifier of the job writing the data.
+            editor_id (str): An optional identifier of the editor writing the data.
+            comment (str): An optional comment to attach to the edit document.
+            **kwargs (Any): Extra information to attach to the edit document
                 corresponding to this write.
         """
+        if (
+            editor_id
+            and self.edit_in_progress
+            and self.editor_id != editor_id
+            and (not self.editor_expiration_date or self.editor_expiration_date > datetime.now())
+        ):
+            raise DataNodeIsBeingEdited(self.id, self.editor_id)
+        self._write(data)
+        self.track_edit(job_id=job_id, editor_id=editor_id, comment=comment, **kwargs)
+        self.unlock_edit()
         from ._data_manager_factory import _DataManagerFactory
 
-        self._write(data)
-        self.track_edit(job_id=job_id, **kwargs)
-        self.unlock_edit()
         _DataManagerFactory._build_manager()._set(self)
 
-    def track_edit(self, **options):
+    def track_edit(
+        self,
+        job_id: Optional[str] = None,
+        editor_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
+        comment: Optional[str] = None,
+        **options: Any,
+    ):
         """Creates and adds a new entry in the edits attribute without writing the data.
 
-        Parameters:
-            options (dict[str, any)): track `timestamp`, `comments`, `job_id`. The others are user-custom, users can
-                use options to attach any information to an external edit of a data node.
+        Arguments:
+            job_id (Optional[str]): The optional identifier of the job writing the data.
+            editor_id (Optional[str]): The optional identifier of the editor writing the data.
+            timestamp (Optional[datetime]): The optional timestamp of the edit. If not provided, the
+                current time is used.
+            comment (Optional[str]): The optional comment of the edit.
+            **options (Any): User-custom attributes to attach to the edit.
         """
         edit = {k: v for k, v in options.items() if v is not None}
-        if "timestamp" not in edit:
-            edit["timestamp"] = datetime.now()
-        self.last_edit_date = edit.get("timestamp")
-        self._edits.append(edit)
+        if job_id:
+            edit[EDIT_JOB_ID_KEY] = job_id
+        if editor_id:
+            edit[EDIT_EDITOR_ID_KEY] = editor_id
+        if comment:
+            edit[EDIT_COMMENT_KEY] = comment
+        if not timestamp:
+            timestamp = self._get_last_modified_datetime(self._properties.get(self._PATH_KEY)) or datetime.now()
+        edit[EDIT_TIMESTAMP_KEY] = timestamp
+        self.last_edit_date = edit.get(EDIT_TIMESTAMP_KEY)
+        self._edits.append(typing.cast(Edit, edit))
+        self.edits = self._edits
 
     def lock_edit(self, editor_id: Optional[str] = None):
-        """Lock the data node modification.
+        """Lock the data node modification to prevent concurrent modifications of the data node.
 
-        Note:
+        If locked by an editor, the data node cannot be modified by another editor until
+        the lock is released or after 30 minutes (default timeout) from the last modification.
+        If the data node is already locked by another editor, an exception is raised.
+
+        If no editor is provided, the data node is locked for everyone until it is unlocked
+        with no expiration date. This is not recommended as it can lead to a deadlock.
+
+        It sets the editor identifier `editor_id`, the editor expiration date `editor_expiration_date`,
+        and the edit in progress flag `edit_in_progress`.
+
+        ??? example "Usage"
+
+            ``` python
+            # Locks the data node modification as a specific editor
+            data_node.lock_edit("editor_id")
+            ```
+
+            To check if the data node is locked, use the property `(DataNode.)edit_in_progress^`.
+            ``` python
+            # Returns True if the data node is locked for modification.
+            data_node.edit_in_progress
+            ```
+
+            To get the editor identifier, use the property `(DataNode.)editor_id^`.
+            ``` python
+            # Returns the editor identifier
+            data_node.editor_id
+            ```
+
+            To get the editor expiration date, use the property `(DataNode.)editor_expiration_date^`.
+            ``` python
+            # Returns the editor expiration date
+            data_node.editor_expiration_date
+            ```
+
             The data node can be unlocked with the method `(DataNode.)unlock_edit()^`.
+            ``` python
+            # Unlocks the data node modification as a specific editor
+            data_node.unlock_edit("editor_id")
+            ```
 
-        Parameters:
+        Arguments:
             editor_id (Optional[str]): The editor's identifier.
+
+        Raises:
+            DataNodeIsBeingEdited: If the data node is already locked by another editor.
         """
         if editor_id:
             if (
@@ -414,7 +583,7 @@ class DataNode(_Entity, _Labeled):
         Note:
             The data node can be locked with the method `(DataNode.)lock_edit()^`.
 
-        Parameters:
+        Arguments:
             editor_id (Optional[str]): The editor's identifier.
         """
         if (
@@ -429,7 +598,7 @@ class DataNode(_Entity, _Labeled):
         self.editor_expiration_date = None
         self.edit_in_progress = False
 
-    def filter(self, operators: Union[List, Tuple], join_operator=JoinOperator.AND):
+    def filter(self, operators: Union[List, Tuple], join_operator=JoinOperator.AND) -> Any:
         """Read and filter the data referenced by this data node.
 
         The data is filtered by the provided list of 3-tuples (key, value, `Operator^`).
@@ -437,22 +606,86 @@ class DataNode(_Entity, _Labeled):
         If multiple filter operators are provided, filtered data will be joined based on the
         join operator (*AND* or *OR*).
 
-        Parameters:
+        Arguments:
             operators (Union[List[Tuple], Tuple]): A 3-element tuple or a list of 3-element tuples,
                 each is in the form of (key, value, `Operator^`).
             join_operator (JoinOperator^): The operator used to join the multiple filter
                 3-tuples.
+
         Returns:
             The filtered data.
+
         Raises:
             NotImplementedError: If the data type is not supported.
         """
         data = self._read()
         return _FilterDataNode._filter(data, operators, join_operator)
 
-    def __getitem__(self, item):
-        data = self._read()
-        return _FilterDataNode._filter_by_key(data, item)
+    def get_label(self) -> str:
+        """Returns the data node simple label prefixed by its owner label.
+
+        Returns:
+            The label of the data node as a string.
+        """
+        return self._get_label()
+
+    def get_simple_label(self) -> str:
+        """Returns the data node simple label.
+
+        Returns:
+            The simple label of the data node as a string.
+        """
+        return self._get_simple_label()
+
+    def get_parents(self) -> Dict[str, Set[_Entity]]:
+        """Get all parents of this data node.
+
+        Returns:
+            The dictionary of all parent entities.
+                They are grouped by their type (Scenario^, Sequences^, or tasks^) so each key corresponds
+                to a level of the parents and the value is a set of the parent entities.
+                An empty dictionary is returned if the entity does not have parents.
+        """
+        from ... import core as tp
+
+        return tp.get_parents(self)
+
+    def get_last_edit(self) -> Optional[Edit]:
+        """Get last `Edit` of this data node.
+
+        Returns:
+            None if there has been no `Edit` on this data node.
+        """
+        return self._edits[-1] if self._edits else None
+
+    def _get_rank(self, scenario_config_id: str) -> int:
+        """Get the data node rank for given scenario config.
+
+        The rank corresponds to the order of appearance of the data nodes in a scenario config DAG.
+
+        Arguments:
+            scenario_config_id (str): The identifier of the scenario config used to
+                get the data node rank.
+
+        Returns:
+            The int value representing the rank of the data node config in the scenario config DAG.
+            If the scenario config is None or an empty string, 0xfffb is returned.<br/>
+            If the data node config is not found, 0xfffd is returned. This case cannot
+            happen in a normal situation.<br/>
+            If the data node config has no precomputed ranks, 0xfffe is returned. This case
+            cannot happen in a normal situation.<br/>
+            If the data node config is not part of the scenario config, 0xfffc is returned as an infinite rank.
+        """
+        if not scenario_config_id:
+            return 0xFFFB
+        dn_config = Config.data_nodes.get(self._config_id, None)
+        if not dn_config:
+            self._logger.error(f"Data node config `{self.config_id}` for data node `{self.id}` is not found.")
+            return 0xFFFD
+        if not dn_config._ranks:
+            self._logger.error(f"Data node config `{self.config_id}` for data node `{self.id}` has no rank.")
+            return 0xFFFE
+        return dn_config._ranks.get(scenario_config_id, 0xFFFC)
 
     @abstractmethod
     def _read(self):
@@ -465,65 +698,33 @@ class DataNode(_Entity, _Labeled):
     def _write(self, data):
         raise NotImplementedError
 
-    @property  # type: ignore
-    @_self_reload(_MANAGER_NAME)
-    def is_ready_for_reading(self) -> bool:
-        """Indicate if this data node is ready for reading.
+    @staticmethod
+    def _new_id(config_id: str) -> DataNodeId:
+        """Generate a unique datanode identifier."""
+        return DataNodeId(
+            DataNode.__ID_SEPARATOR.join([DataNode._ID_PREFIX, _validate_id(config_id), str(uuid.uuid4())])
+        )
 
-        Returns:
-            False if the data is locked for modification or if the data has never been written.
-                True otherwise.
-        """
-        if self._edit_in_progress:
-            return False
-        if not self._last_edit_date:
-            # Never been written so it is not up-to-date
-            return False
-        return True
+    def _get_user_properties(self) -> Dict[str, Any]:
+        """Get user properties."""
+        return {key: value for key, value in self.properties.items() if key not in self._TAIPY_PROPERTIES}
 
-    @property  # type: ignore
-    @_self_reload(_MANAGER_NAME)
-    def is_valid(self) -> bool:
-        """Indicate if this data node is valid.
+    @classmethod
+    def _get_last_modified_datetime(cls, path: Optional[str] = None) -> Optional[datetime]:
+        if path and os.path.isfile(path):
+            return datetime.fromtimestamp(os.path.getmtime(path))
 
-        Returns:
-            False if the data ever been written or the expiration date has passed.<br/>
-            True otherwise.
-        """
-        if not self._last_edit_date:
-            # Never been written so it is not valid
-            return False
-        if not self._validity_period:
-            # No validity period and has already been written, so it is valid
-            return True
-        if datetime.now() > self.expiration_date:
-            # expiration_date has been passed
-            return False
-        return True
+        last_modified_datetime = None
+        if path and os.path.isdir(path):
+            for filename in os.listdir(path):
+                filepath = os.path.join(path, filename)
+                if os.path.isfile(filepath):
+                    file_mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
 
-    @property
-    def is_up_to_date(self) -> bool:
-        """Indicate if this data node is up-to-date.
+                    if last_modified_datetime is None or file_mtime > last_modified_datetime:
+                        last_modified_datetime = file_mtime
 
-        Returns:
-            False if a preceding data node has been updated before the selected data node
-            or the selected data is invalid.<br/>
-            True otherwise.
-        """
-
-        from ..scenario.scenario import Scenario
-        from ..taipy import get_parents
-
-        parent_scenarios: Set[Scenario] = get_parents(self)["scenario"]  # type: ignore
-        for parent_scenario in parent_scenarios:
-            for ancestor_node in nx.ancestors(parent_scenario._build_dag(), self):
-                if (
-                    isinstance(ancestor_node, DataNode)
-                    and ancestor_node.last_edit_date
-                    and ancestor_node.last_edit_date > self.last_edit_date
-                ):
-                    return False
-        return self.is_valid
+        return last_modified_datetime
 
     @staticmethod
     def _class_map():
@@ -542,22 +743,6 @@ class DataNode(_Entity, _Labeled):
                 pass
 
         return class_map
-
-    def get_label(self) -> str:
-        """Returns the data node simple label prefixed by its owner label.
-
-        Returns:
-            The label of the data node as a string.
-        """
-        return self._get_label()
-
-    def get_simple_label(self) -> str:
-        """Returns the data node simple label.
-
-        Returns:
-            The simple label of the data node as a string.
-        """
-        return self._get_simple_label()
 
 
 @_make_event.register(DataNode)

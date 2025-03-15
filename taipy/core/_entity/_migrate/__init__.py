@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,4 +11,3 @@
 
 from ._migrate_fs import _migrate_fs_entities, _remove_backup_file_entities, _restore_migrate_file_entities
 from ._migrate_mongo import _migrate_mongo_entities, _remove_backup_mongo_entities, _restore_migrate_mongo_entities
-from ._migrate_sql import _migrate_sql_entities, _remove_backup_sql_entities, _restore_migrate_sql_entities

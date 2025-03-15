@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,34 +12,17 @@
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from sqlalchemy import JSON, Boolean, Column, Enum, String, Table
-
 from .._repository._base_taipy_model import _BaseModel
-from .._repository.db._sql_base_model import mapper_registry
 from .job_id import JobId
 from .status import Status
 
 
-@mapper_registry.mapped
 @dataclass
 class _JobModel(_BaseModel):
-    __table__ = Table(
-        "job",
-        mapper_registry.metadata,
-        Column("id", String, primary_key=True),
-        Column("task_id", String),
-        Column("status", Enum(Status)),
-        Column("force", Boolean),
-        Column("submit_id", String),
-        Column("submit_entity_id", String),
-        Column("creation_date", String),
-        Column("subscribers", JSON),
-        Column("stacktrace", JSON),
-        Column("version", String),
-    )
     id: JobId
     task_id: str
     status: Status
+    status_change_records: Dict[str, str]
     force: bool
     submit_id: str
     submit_entity_id: str
@@ -54,6 +37,7 @@ class _JobModel(_BaseModel):
             id=data["id"],
             task_id=data["task_id"],
             status=Status._from_repr(data["status"]),
+            status_change_records=_BaseModel._deserialize_attribute(data["status_change_records"]),
             force=data["force"],
             submit_id=data["submit_id"],
             submit_entity_id=data["submit_entity_id"],
@@ -68,6 +52,7 @@ class _JobModel(_BaseModel):
             self.id,
             self.task_id,
             repr(self.status),
+            _BaseModel._serialize_attribute(self.status_change_records),
             self.force,
             self.submit_id,
             self.submit_entity_id,

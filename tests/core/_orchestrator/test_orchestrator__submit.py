@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -8,15 +8,16 @@
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
+
 from datetime import datetime, timedelta
+from time import sleep
 from unittest import mock
 
 import freezegun
 import pytest
 
-from taipy import Scenario, Scope, Task
-from taipy.config import Config
-from taipy.core import taipy
+from taipy.common.config import Config
+from taipy.core import Orchestrator, Scenario, Scope, Task, taipy
 from taipy.core._orchestrator._orchestrator import _Orchestrator
 from taipy.core._orchestrator._orchestrator_factory import _OrchestratorFactory
 from taipy.core.config import JobConfig
@@ -26,6 +27,7 @@ from taipy.core.scenario._scenario_manager import _ScenarioManager
 from taipy.core.submission._submission_manager_factory import _SubmissionManagerFactory
 from taipy.core.submission.submission_status import SubmissionStatus
 from taipy.core.task._task_manager import _TaskManager
+from tests.core.utils import assert_true_after_time
 
 
 def nothing(*args, **kwargs):
@@ -52,6 +54,7 @@ def test_submit_scenario_development_mode():
     scenario = create_scenario()
     scenario.dn_0.write(0)  # input data is made ready
     orchestrator = _OrchestratorFactory._build_orchestrator()
+    _OrchestratorFactory._build_dispatcher()
 
     submit_time = datetime.now() + timedelta(seconds=1)  # +1 to ensure the edit time of dn_0 is before the submit time
     with freezegun.freeze_time(submit_time):
@@ -62,9 +65,9 @@ def test_submit_scenario_development_mode():
 
     # data nodes should have been written (except the input dn_0)
     assert scenario.dn_0.last_edit_date < submit_time
-    assert scenario.dn_1.last_edit_date == submit_time
-    assert scenario.dn_2.last_edit_date == submit_time
-    assert scenario.dn_3.last_edit_date == submit_time
+    assert scenario.dn_1.last_edit_date is not None
+    assert scenario.dn_2.last_edit_date is not None
+    assert scenario.dn_3.last_edit_date is not None
 
     # jobs are created in a specific order and are correct
     assert len(jobs) == 4
@@ -319,7 +322,7 @@ def test_submit_scenario_with_callbacks_and_force_and_wait():
         assert jobs[2]._subscribers[0].__code__ == nothing.__code__
         assert jobs[2]._subscribers[1].__code__ == _Orchestrator._update_submission_status.__code__
         assert jobs[2]._subscribers[2].__code__ == _Orchestrator._on_status_change.__code__
-        mck.assert_called_once_with(jobs, timeout=5)
+        mck.assert_called_once_with(jobs, 5)
 
 
 def test_submit_sequence_development_mode():
@@ -339,7 +342,9 @@ def test_submit_sequence_development_mode():
 
     # data nodes should have been written (except the input dn_0)
     assert sce.dn_0.last_edit_date < submit_time
-    assert sce.dn_1.last_edit_date == submit_time == sce.dn_2.last_edit_date == sce.dn_3.last_edit_date
+    assert sce.dn_1.last_edit_date is not None
+    assert sce.dn_2.last_edit_date is not None
+    assert sce.dn_3.last_edit_date is not None
 
     # jobs are created in a specific order and are correct
     assert len(jobs) == 3
@@ -472,7 +477,7 @@ def test_submit_sequence_with_callbacks_and_force_and_wait():
 
     with mock.patch("taipy.core._orchestrator._orchestrator._Orchestrator._wait_until_job_finished") as mck:
         jobs = orchestrator.submit(scenario, callbacks=[nothing], force=True, wait=True, timeout=5).jobs
-        mck.assert_called_once_with(jobs, timeout=5)
+        mck.assert_called_once_with(jobs, 5)
 
     # jobs are created in a specific order and are correct
     assert len(jobs) == 4
@@ -502,3 +507,77 @@ def test_submit_submittable_generate_unique_submit_id():
     assert jobs_1[0].submit_id == jobs_1[1].submit_id
     assert jobs_2[0].submit_id == jobs_2[1].submit_id
     assert jobs_1[0].submit_id != jobs_2[0].submit_id
+
+
+def task_sleep_1():
+    sleep(1)
+
+
+def task_sleep_2():
+    sleep(2)
+    return
+
+
+def test_submit_duration_development_mode():
+    orchestrator = Orchestrator()
+    orchestrator.run()
+
+    task_1 = Task("task_config_id_1", {}, task_sleep_1, [], [])
+    task_2 = Task("task_config_id_2", {}, task_sleep_2, [], [])
+
+    _TaskManager._set(task_1)
+    _TaskManager._set(task_2)
+
+    scenario = Scenario("scenario", {task_1, task_2}, {})
+    _ScenarioManager._set(scenario)
+    submission = taipy.submit(scenario)
+    jobs = submission.jobs
+    orchestrator.stop()
+
+    assert all(isinstance(job.submitted_at, datetime) for job in jobs)
+    assert all(isinstance(job.run_at, datetime) for job in jobs)
+    assert all(isinstance(job.finished_at, datetime) for job in jobs)
+    jobs_1s = jobs[0] if jobs[0].task.config_id == "task_config_id_1" else jobs[1]
+    jobs_2s = jobs[0] if jobs[0].task.config_id == "task_config_id_2" else jobs[1]
+    assert jobs_1s.execution_duration >= 1
+    assert jobs_2s.execution_duration >= 2
+
+    assert submission.execution_duration >= 3
+    assert submission.submitted_at == min(jobs_1s.submitted_at, jobs_2s.submitted_at)
+    assert submission.run_at == min(jobs_1s.run_at, jobs_2s.run_at)
+    assert submission.finished_at == max(jobs_1s.finished_at, jobs_2s.finished_at)
+
+
+@pytest.mark.standalone
+def test_submit_duration_standalone_mode():
+    Config.configure_job_executions(mode=JobConfig._STANDALONE_MODE)
+    orchestrator = Orchestrator()
+    orchestrator.run()
+
+    task_1 = Task("task_config_id_1", {}, task_sleep_1, [], [])
+    task_2 = Task("task_config_id_2", {}, task_sleep_2, [], [])
+
+    _TaskManager._set(task_1)
+    _TaskManager._set(task_2)
+
+    scenario = Scenario("scenario", {task_1, task_2}, {})
+    _ScenarioManager._set(scenario)
+    submission = taipy.submit(scenario)
+
+    assert_true_after_time(lambda: all(job is not None and job.is_completed() for job in submission.jobs))
+    orchestrator.stop()
+
+    jobs = submission.jobs
+
+    assert all(isinstance(job.submitted_at, datetime) for job in jobs)
+    assert all(isinstance(job.run_at, datetime) for job in jobs)
+    assert all(isinstance(job.finished_at, datetime) for job in jobs)
+    jobs_1s = jobs[0] if jobs[0].task.config_id == "task_config_id_1" else jobs[1]
+    jobs_2s = jobs[0] if jobs[0].task.config_id == "task_config_id_2" else jobs[1]
+    assert jobs_1s.execution_duration >= 1
+    assert jobs_2s.execution_duration >= 2
+
+    assert submission.execution_duration >= 2  # Both tasks are executed in parallel so the duration may smaller than 3
+    assert submission.submitted_at == min(jobs_1s.submitted_at, jobs_2s.submitted_at)
+    assert submission.run_at == min(jobs_1s.run_at, jobs_2s.run_at)
+    assert submission.finished_at == max(jobs_1s.finished_at, jobs_2s.finished_at)

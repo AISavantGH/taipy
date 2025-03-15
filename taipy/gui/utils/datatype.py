@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -22,4 +22,5 @@ def _get_data_type(value):
             return "int"
         elif pd.api.types.is_float_dtype(value):
             return "float"
-    return re.match(r"^<class '(.*\.)?(.*?)(\d\d)?'>", str(type(value))).group(2)
+    m = re.match(r"^<class '(.*\.)?(.*?)(\d\d)?'>", str(type(value)))
+    return m.group(2) if m else None

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,8 +13,8 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from unittest import mock
 from unittest.mock import call
 
-from taipy import Config
-from taipy.config._serializer._toml_serializer import _TomlSerializer
+from taipy.common.config import Config
+from taipy.common.config._serializer._toml_serializer import _TomlSerializer
 from taipy.core import JobId
 from taipy.core._orchestrator._dispatcher import _StandaloneJobDispatcher
 from taipy.core._orchestrator._orchestrator_factory import _OrchestratorFactory

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,7 +12,7 @@
 from typing import Optional
 
 from ..exceptions.exceptions import InvalidEventOperation
-from .event import _UNSUBMITTABLE_ENTITY_TYPES, EventEntityType, EventOperation
+from .event import Event, EventEntityType, EventOperation
 
 
 class _Topic:
@@ -35,13 +35,13 @@ class _Topic:
         if (
             entity_type
             and operation
-            and entity_type in _UNSUBMITTABLE_ENTITY_TYPES
+            and entity_type in Event._UNSUBMITTABLE_ENTITY_TYPES
             and operation == EventOperation.SUBMISSION
         ):
             raise InvalidEventOperation
         return operation
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.entity_type, self.entity_id, self.operation, self.attribute_name))
 
     def __eq__(self, __value) -> bool:

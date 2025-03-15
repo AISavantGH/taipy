@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -28,6 +28,7 @@ from .utils import (
     _TaipyLov,
     _TaipyLovValue,
     _TaipyNumber,
+    _TaipyTime,
     _TaipyToJson,
 )
 
@@ -49,6 +50,10 @@ class _WsType(Enum):
     ACKNOWLEDGEMENT = "ACK"
     GET_MODULE_CONTEXT = "GMC"
     GET_DATA_TREE = "GDT"
+    GET_ROUTES = "GR"
+    FAVICON = "FV"
+    BROADCAST = "BC"
+    LOCAL_STORAGE = "LS"
 
 
 NumberTypes = {"int", "int64", "float", "float64"}
@@ -67,6 +72,14 @@ class PropertyType(Enum):
     See `ElementProperty^` for more details.
     """
 
+    any = "any"
+    """
+    The property holds a value of any serializable type.
+    """
+    dynamic_any = "dynamicany"
+    """
+    The property is dynamic and holds a value of any serializable type.
+    """
     boolean = "boolean"
     """
     The property holds a Boolean value.
@@ -77,29 +90,41 @@ class PropertyType(Enum):
     date = _TaipyDate
     date_range = _TaipyDateRange
     dict = "dict"
+    time = _TaipyTime
     """
     The property holds a dictionary.
     """
+    dynamic_date = "dynamicdate"
+    """
+    The property is dynamic and holds a date.
+    """
     dynamic_dict = _TaipyDict
     """
-    The property holds a dynamic dictionary.
+    The property is dynamic and holds a dictionary.
     """
     dynamic_number = _TaipyNumber
     """
-    The property holds a dynamic number.
+    The property is dynamic and holds a number.
     """
     dynamic_lo_numbers = _TaipyLoNumbers
     """
-    The property holds a dynamic list of numbers.
+    The property is dynamic and holds a list of numbers.
     """
     dynamic_boolean = _TaipyBool
     """
-    The property holds a dynamic Boolean value.
+    The property is dynamic and holds a Boolean value.
     """
     dynamic_list = "dynamiclist"
+    """
+    The property is dynamic and holds a list.
+
+    The React component must have two parameters: "<propertyName>" that must be a list of object, and
+    "default<PropertyName>" that must be a string, set to the JSON representation of the initial value
+    of the property.
+    """
     dynamic_string = "dynamicstring"
     """
-    The property holds a dynamic string.
+    The property is dynamic and holds a string.
     """
     function = "function"
     """
@@ -107,7 +132,9 @@ class PropertyType(Enum):
     """
     image = _TaipyContentImage
     json = "json"
+    single_lov = "singlelov"
     lov = _TaipyLov
+    lov_no_default = "lovnodefault"
     """
     The property holds a LoV (list of values).
     """
@@ -144,8 +171,7 @@ class PropertyType(Enum):
 
 
 @t.overload  # noqa: F811
-def _get_taipy_type(a_type: None) -> None:
-    ...
+def _get_taipy_type(a_type: None) -> None: ...
 
 
 @t.overload
@@ -160,14 +186,13 @@ def _get_taipy_type(a_type: PropertyType) -> t.Type[_TaipyBase]:  # noqa: F811
 
 @t.overload
 def _get_taipy_type(  # noqa: F811
-    a_type: t.Optional[t.Union[t.Type[_TaipyBase], t.Type[Decimator], PropertyType]],
-) -> t.Optional[t.Union[t.Type[_TaipyBase], t.Type[Decimator], PropertyType]]:
-    ...
+    a_type: t.Union[t.Type[_TaipyBase], t.Type[Decimator], PropertyType, None],
+) -> t.Union[t.Type[_TaipyBase], t.Type[Decimator], PropertyType, None]: ...
 
 
 def _get_taipy_type(  # noqa: F811
-    a_type: t.Optional[t.Union[t.Type[_TaipyBase], t.Type[Decimator], PropertyType]],
-) -> t.Optional[t.Union[t.Type[_TaipyBase], t.Type[Decimator], PropertyType]]:
+    a_type: t.Union[t.Type[_TaipyBase], t.Type[Decimator], PropertyType, None],
+) -> t.Union[t.Type[_TaipyBase], t.Type[Decimator], PropertyType, None]:
     if a_type is None:
         return None
     if isinstance(a_type, PropertyType) and not isinstance(a_type.value, str):

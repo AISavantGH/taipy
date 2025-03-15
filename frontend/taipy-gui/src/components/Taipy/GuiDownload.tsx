@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 
 import { createDownloadAction, createSendActionNameAction, FileDownloadProps } from "../../context/taipyReducers";
 import { useDispatch, useModule } from "../../utils/hooks";
@@ -22,18 +22,18 @@ interface GuiDownloadProps {
 }
 
 const GuiDownload = ({ download }: GuiDownloadProps) => {
-    const { name = "", onAction, content } = download || {};
+    const { name = "", onAction, content, context } = download || {};
     const dispatch = useDispatch();
     const module = useModule();
 
     useEffect(() => {
         if (content) {
-            runXHR(undefined, content, name, onAction ? (() => dispatch(createSendActionNameAction("Gui.download", module, onAction, name, content))) : undefined);
+            runXHR(undefined, content, name, onAction ? (() => dispatch(createSendActionNameAction("Gui.download", context || module, onAction, name, content))) : undefined);
             dispatch(createDownloadAction());
         }
-    }, [content, name, dispatch, onAction, module]);
+    }, [content, name, dispatch, onAction, module, context]);
 
-    return <></>;
+    return null;
 };
 
 export default GuiDownload;

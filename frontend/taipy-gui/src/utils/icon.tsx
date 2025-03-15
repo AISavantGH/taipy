@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -14,7 +14,7 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import axios from "axios";
 import Avatar from "@mui/material/Avatar";
-import { SxProps, useTheme, Theme } from "@mui/system";
+import { SxProps, useTheme, Theme } from "@mui/material/styles";
 
 /**
  * An Icon representation.
@@ -39,7 +39,7 @@ interface IconProps {
     id?: string;
     img: Icon;
     className?: string;
-    sx?: SxProps;
+    sx?: SxProps<Theme>;
 }
 
 export const avatarSx = { bgcolor: (theme: Theme) => theme.palette.text.primary };

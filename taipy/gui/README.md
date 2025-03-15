@@ -1,7 +1,7 @@
 # Taipy GUI
 
 ## License
-Copyright 2021-2024 Avaiga Private Limited
+Copyright 2021-2025 Avaiga Private Limited
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -23,7 +23,7 @@ specific language governing permissions and limitations under the License.
 ## What is Taipy GUI
 
 Taipy is a Python library for creating Business Applications. More information on our
-[website](https://www.taipy.io). Taipy is split into multiple repositories including `taipy-gui` to let users
+[website](https://www.taipy.io). Taipy is split into multiple packages including `taipy-gui` to let users
 install the minimum they need.
 
 Taipy GUI provides Python classes that make it easy to create powerful web apps in minutes.
@@ -36,11 +36,11 @@ Want to install and try *Taipy GUI*? Check out our [`INSTALLATION.md`](INSTALLAT
 
 ## Contributing
 
-Want to help build *Taipy GUI*? Check out our [`CONTRIBUTING.md`](CONTRIBUTING.md) file.
+Want to help build *Taipy GUI*? Check out our [`CONTRIBUTING.md`](../../CONTRIBUTING.md) file.
 
 ## Code of conduct
 
-Want to be part of the *Taipy GUI* community? Check out our [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) file.
+Want to be part of the *Taipy GUI* community? Check out our [`CODE_OF_CONDUCT.md`](../../CODE_OF_CONDUCT.md) file.
 
 ## Directory Structure
 
@@ -48,8 +48,6 @@ Want to be part of the *Taipy GUI* community? Check out our [`CODE_OF_CONDUCT.md
 - `taipy/gui`: Python source files;
 - `tests/gui`: Unit tests;
 - `tools`: Files used to document `taipy-gui`;
-- `CODE_OF_CONDUCT.md`: Code of conduct for members and contributors of `taipy-gui`;
-- `CONTRIBUTING.md`: Instructions to contribute to `taipy-gui`;
 - `INSTALLATION.md`: Instructions to build and install `taipy-gui`;
 - `LICENSE`: The Apache 2.0 License;
 - `README.md`: Current file;

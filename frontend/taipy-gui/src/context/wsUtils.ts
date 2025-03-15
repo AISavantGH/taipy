@@ -1,7 +1,8 @@
 import { Socket } from "socket.io-client";
-import { v4 as uuidv4 } from "uuid";
+import { nanoid } from 'nanoid'
 
 export const TAIPY_CLIENT_ID = "TaipyClientId";
+export const TAIPY_APP_ID = "TaipyAppId";
 
 export type WsMessageType =
     | "A"
@@ -19,7 +20,11 @@ export type WsMessageType =
     | "ACK"
     | "GMC"
     | "GDT"
-    | "AID";
+    | "AID"
+    | "GR"
+    | "FV"
+    | "BC"
+    | "LS";
 
 export interface WsMessage {
     type: WsMessageType;
@@ -41,7 +46,7 @@ export const sendWsMessage = (
     propagate = true,
     serverAck?: (val: unknown) => void
 ): string => {
-    const ackId = uuidv4();
+    const ackId = nanoid();
     const msg: WsMessage = {
         type: type,
         name: name,
@@ -51,6 +56,15 @@ export const sendWsMessage = (
         ack_id: ackId,
         module_context: moduleContext,
     };
-    socket?.emit("message", msg, serverAck);
+    socket?.emit("message", lightenPayload(msg as unknown as Record<string, unknown>), serverAck);
     return ackId;
+};
+
+export const lightenPayload = (payload: Record<string, unknown>) => {
+    return Object.keys(payload || {}).reduce((pv, key) => {
+        if (payload[key] !== undefined) {
+            pv[key] = payload[key];
+        }
+        return pv;
+    }, {} as typeof payload);
 };

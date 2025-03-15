@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -19,8 +19,8 @@ from unittest import mock
 
 import pytest
 
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
+from taipy import Scope
+from taipy.common.config import Config
 from taipy.core._orchestrator._dispatcher import _StandaloneJobDispatcher
 from taipy.core._orchestrator._orchestrator_factory import _OrchestratorFactory
 from taipy.core.config.job_config import JobConfig
@@ -411,6 +411,10 @@ def test_is_deletable():
     assert len(_JobManager._get_all()) == 0
     task = _create_task(print, 0, "task")
     job = _OrchestratorFactory._orchestrator.submit_task(task).jobs[0]
+
+    rc = _JobManager._is_deletable("some_job")
+    assert not rc
+    assert "Entity 'some_job' does not exist in the repository." in rc.reasons
 
     assert job.is_completed()
     assert _JobManager._is_deletable(job)

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -16,21 +16,35 @@ import shutil
 
 import pytest
 
-from taipy.config.config import Config
-from taipy.core.exceptions.exceptions import InvalidExportPath
+from taipy.core.exceptions.exceptions import ModelNotFound
 
-from .mocks import MockConverter, MockFSRepository, MockModel, MockObj, MockSQLRepository
+from .mocks import MockConverter, MockFSRepository, MockModel, MockObj
 
 
 class TestRepositoriesStorage:
+    def test_load_from_non_existent_file_on_fs_repo(self):
+        r = MockFSRepository(model_type=MockModel, dir_name="mock_model", converter=MockConverter)
+
+        # The file does not exist should raise ModelNotFound exception
+        with pytest.raises(ModelNotFound):
+            r._load("non_existent_file")
+
+        # The file exists but is empty should also raise ModelNotFound exception
+        os.makedirs(r.dir_path)
+        with open(r.dir_path / "empty_file.json", "w") as f:
+            f.write("")
+
+        assert r._exists("empty_file")
+        with pytest.raises(ModelNotFound):
+            r._load("empty_file")
+
     @pytest.mark.parametrize(
         "mock_repo,params",
         [
             (MockFSRepository, {"model_type": MockModel, "dir_name": "mock_model", "converter": MockConverter}),
-            (MockSQLRepository, {"model_type": MockModel, "converter": MockConverter}),
         ],
     )
-    def test_save_and_fetch_model(self, mock_repo, params, init_sql_repo):
+    def test_save_and_fetch_model(self, mock_repo, params):
         r = mock_repo(**params)
         m = MockObj("uuid", "foo")
         r._save(m)
@@ -42,10 +56,9 @@ class TestRepositoriesStorage:
         "mock_repo,params",
         [
             (MockFSRepository, {"model_type": MockModel, "dir_name": "mock_model", "converter": MockConverter}),
-            (MockSQLRepository, {"model_type": MockModel, "converter": MockConverter}),
         ],
     )
-    def test_exists(self, mock_repo, params, init_sql_repo):
+    def test_exists(self, mock_repo, params):
         r = mock_repo(**params)
         m = MockObj("uuid", "foo")
         r._save(m)
@@ -57,10 +70,9 @@ class TestRepositoriesStorage:
         "mock_repo,params",
         [
             (MockFSRepository, {"model_type": MockModel, "dir_name": "mock_model", "converter": MockConverter}),
-            (MockSQLRepository, {"model_type": MockModel, "converter": MockConverter}),
         ],
     )
-    def test_get_all(self, mock_repo, params, init_sql_repo):
+    def test_get_all(self, mock_repo, params):
         objs = []
         r = mock_repo(**params)
         r._delete_all()
@@ -81,10 +93,9 @@ class TestRepositoriesStorage:
         "mock_repo,params",
         [
             (MockFSRepository, {"model_type": MockModel, "dir_name": "mock_model", "converter": MockConverter}),
-            (MockSQLRepository, {"model_type": MockModel, "converter": MockConverter}),
         ],
     )
-    def test_delete_all(self, mock_repo, params, init_sql_repo):
+    def test_delete_all(self, mock_repo, params):
         r = mock_repo(**params)
         r._delete_all()
 
@@ -103,10 +114,9 @@ class TestRepositoriesStorage:
         "mock_repo,params",
         [
             (MockFSRepository, {"model_type": MockModel, "dir_name": "mock_model", "converter": MockConverter}),
-            (MockSQLRepository, {"model_type": MockModel, "converter": MockConverter}),
         ],
     )
-    def test_delete_many(self, mock_repo, params, init_sql_repo):
+    def test_delete_many(self, mock_repo, params):
         r = mock_repo(**params)
         r._delete_all()
 
@@ -124,10 +134,9 @@ class TestRepositoriesStorage:
         "mock_repo,params",
         [
             (MockFSRepository, {"model_type": MockModel, "dir_name": "mock_model", "converter": MockConverter}),
-            (MockSQLRepository, {"model_type": MockModel, "converter": MockConverter}),
         ],
     )
-    def test_search(self, mock_repo, params, init_sql_repo):
+    def test_search(self, mock_repo, params):
         r = mock_repo(**params)
         r._delete_all()
 
@@ -144,11 +153,10 @@ class TestRepositoriesStorage:
         "mock_repo,params",
         [
             (MockFSRepository, {"model_type": MockModel, "dir_name": "mock_model", "converter": MockConverter}),
-            (MockSQLRepository, {"model_type": MockModel, "converter": MockConverter}),
         ],
     )
     @pytest.mark.parametrize("export_path", ["tmp"])
-    def test_export(self, mock_repo, params, export_path, init_sql_repo):
+    def test_export(self, mock_repo, params, export_path):
         r = mock_repo(**params)
 
         m = MockObj("uuid", "foo")
@@ -164,9 +172,5 @@ class TestRepositoriesStorage:
         # Export to same location again should work
         r._export("uuid", export_path)
         assert pathlib.Path(os.path.join(export_path, "mock_model/uuid.json")).exists()
-
-        if mock_repo == MockFSRepository:
-            with pytest.raises(InvalidExportPath):
-                r._export("uuid", Config.core.storage_folder)
 
         shutil.rmtree(export_path, ignore_errors=True)

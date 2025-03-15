@@ -1,6 +1,4 @@
-#!/usr/bin/env python
-
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,16 +9,16 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-"""The setup script."""
-import json
+"""The setup script for taipy-core package"""
 
+import json
 from pathlib import Path
 
 from setuptools import find_packages, setup
 
 root_folder = Path(__file__).parent
 
-readme = Path(root_folder / "README.md").read_text("UTF-8")
+package_desc = Path(root_folder / "package_desc.md").read_text("UTF-8")
 
 version_path = "taipy/core/version.json"
 
@@ -44,33 +42,11 @@ extras_require = {
 }
 
 setup(
-    author="Avaiga",
-    author_email="dev@taipy.io",
-    python_requires=">=3.8",
-    classifiers=[
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: Apache Software License",
-        "Natural Language :: English",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-    ],
-    description="A Python library to build powerful and customized data-driven back-end applications.",
+    version=version_string,
     install_requires=requirements,
-    long_description=readme,
-    long_description_content_type="text/markdown",
-    license="Apache License 2.0",
-    keywords="taipy-core",
-    name="taipy-core",
     packages=find_packages(where=root_folder, include=["taipy", "taipy.core", "taipy.core.*"]),
     include_package_data=True,
-    test_suite="tests",
+    data_files=[('version', [version_path])],
     tests_require=test_requirements,
-    url="https://github.com/avaiga/taipy-core",
-    version=version_string,
-    zip_safe=False,
     extras_require=extras_require,
 )

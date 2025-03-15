@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -19,6 +19,7 @@ import Tooltip from "@mui/material/Tooltip";
 import { createSendActionNameAction } from "../../context/taipyReducers";
 import { useClassNames, useDispatch, useDynamicProperty, useModule } from "../../utils/hooks";
 import { TaipyActiveProps } from "./utils";
+import { getComponentClassName } from "./TaipyStyle";
 
 interface ImageProps extends TaipyActiveProps {
     onAction?: string;
@@ -58,12 +59,15 @@ const Image = (props: ImageProps) => {
         return [undefined, undefined, false];
     }, [content]);
 
-    const style = useMemo(() => ({
-        width: width,
-        height: height,
-        display: inlineSvg ? "inline-flex" : undefined,
-        verticalAlign: inlineSvg ? "middle" : undefined
-    }), [width, height, inlineSvg]);
+    const style = useMemo(
+        () => ({
+            width: width,
+            height: height,
+            display: inlineSvg ? "inline-flex" : undefined,
+            verticalAlign: inlineSvg ? "middle" : undefined,
+        }),
+        [width, height, inlineSvg]
+    );
 
     useEffect(() => {
         if (svg) {
@@ -75,27 +79,44 @@ const Image = (props: ImageProps) => {
 
     return (
         <Tooltip title={hover || label}>
-            {onAction ? (
-                <Button
-                    id={id}
-                    className={className}
-                    onClick={handleClick}
-                    aria-label={label}
-                    variant="outlined"
-                    disabled={!active}
-                    title={label}
-                >
-                    {inlineSvg ? (
-                        <div ref={divRef} style={style} />
-                    ) : (
-                        <img src={content} style={style} alt={label} />
-                    )}
-                </Button>
-            ) : inlineSvg ? (
-                <div id={id} className={className} style={style} ref={divRef} title={label}></div>
-            ) : (
-                <img id={id} src={content} style={style} className={className} alt={label} />
-            )}
+            <>
+                {onAction ? (
+                    <span>
+                        <Button
+                            id={id}
+                            className={`${className} ${getComponentClassName(props.children)}`}
+                            onClick={handleClick}
+                            aria-label={label}
+                            variant="outlined"
+                            disabled={!active}
+                            title={label}
+                        >
+                            {inlineSvg ? (
+                                <div ref={divRef} style={style} />
+                            ) : (
+                                <img src={content} style={style} alt={label} />
+                            )}
+                        </Button>
+                    </span>
+                ) : inlineSvg ? (
+                    <div
+                        id={id}
+                        className={`${className} ${getComponentClassName(props.children)}`}
+                        style={style}
+                        ref={divRef}
+                        title={label}
+                    ></div>
+                ) : (
+                    <img
+                        id={id}
+                        src={content}
+                        style={style}
+                        className={`${className} ${getComponentClassName(props.children)}`}
+                        alt={label}
+                    />
+                )}
+                {props.children}
+            </>
         </Tooltip>
     );
 };

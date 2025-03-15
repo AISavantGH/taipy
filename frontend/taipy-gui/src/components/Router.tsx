@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -18,10 +18,10 @@ import CircularProgress from "@mui/material/CircularProgress";
 import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider } from "@mui/system";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFnsV3";
 import { SnackbarProvider } from "notistack";
 import { HelmetProvider } from "react-helmet-async";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router";
 import { ErrorBoundary } from "react-error-boundary";
 
 import { PageContext, TaipyContext } from "../context/taipyContext";
@@ -30,20 +30,21 @@ import {
     createSetLocationsAction,
     initializeWebSocket,
     INITIAL_STATE,
-    retreiveBlockUi,
+    retrieveBlockUi,
     taipyInitialize,
     taipyReducer,
 } from "../context/taipyReducers";
-import Alert from "./Taipy/Alert";
 import UIBlocker from "./Taipy/UIBlocker";
 import Navigate from "./Taipy/Navigate";
 import Menu from "./Taipy/Menu";
+import TaipyNotification from "./Taipy/Notification";
 import GuiDownload from "./Taipy/GuiDownload";
 import ErrorFallback from "../utils/ErrorBoundary";
 import MainPage from "./pages/MainPage";
 import TaipyRendered from "./pages/TaipyRendered";
 import NotFound404 from "./pages/NotFound404";
 import { getBaseURL } from "../utils";
+import { useLocalStorageWithEvent } from "../hooks";
 
 interface AxiosRouter {
     router: string;
@@ -63,6 +64,8 @@ const Router = () => {
     const themeClass = "taipy-" + state.theme.palette.mode;
     const baseURL = getBaseURL();
 
+    useLocalStorageWithEvent(dispatch, state.id);
+
     useEffect(() => {
         if (refresh) {
             // no need to access the backend again, the routes are static
@@ -79,7 +82,7 @@ const Router = () => {
             .then((result) => {
                 dispatch(createSetLocationsAction(result.data.locations));
                 setRoutes(result.data.locations);
-                result.data.blockUI && dispatch(createBlockAction(retreiveBlockUi()));
+                result.data.blockUI && dispatch(createBlockAction(retrieveBlockUi()));
             })
             .catch((error) => {
                 // Fallback router if there is any error
@@ -125,7 +128,7 @@ const Router = () => {
                                                                 <MainPage
                                                                     path={routes["/"]}
                                                                     route={Object.keys(routes).find(
-                                                                        (path) => path !== "/"
+                                                                        (path) => path !== "/",
                                                                     )}
                                                                 />
                                                             }
@@ -152,7 +155,7 @@ const Router = () => {
                                         ) : null}
                                     </Box>
                                     <ErrorBoundary FallbackComponent={ErrorFallback}>
-                                        <Alert alerts={state.alerts} />
+                                        <TaipyNotification notifications={state.notifications} />
                                         <UIBlocker block={state.block} />
                                         <Navigate
                                             to={state.navigateTo}

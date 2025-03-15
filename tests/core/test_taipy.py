@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -10,24 +10,19 @@
 # specific language governing permissions and limitations under the License.
 
 import datetime
-import os
-import pathlib
-import shutil
 from unittest import mock
 
 import pytest
 
 import taipy.core.taipy as tp
-from taipy.config.common.frequency import Frequency
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
-from taipy.config.exceptions.exceptions import ConfigurationUpdateBlocked
+from taipy.common.config import Config
+from taipy.common.config.exceptions.exceptions import ConfigurationUpdateBlocked
 from taipy.core import (
-    Core,
     Cycle,
     CycleId,
     DataNodeId,
     JobId,
+    Orchestrator,
     Scenario,
     ScenarioId,
     Sequence,
@@ -39,12 +34,14 @@ from taipy.core import (
 )
 from taipy.core._orchestrator._orchestrator_factory import _OrchestratorFactory
 from taipy.core._version._version_manager import _VersionManager
+from taipy.core.common.frequency import Frequency
+from taipy.core.common.scope import Scope
 from taipy.core.config.data_node_config import DataNodeConfig
 from taipy.core.config.scenario_config import ScenarioConfig
 from taipy.core.cycle._cycle_manager import _CycleManager
 from taipy.core.data._data_manager import _DataManager
 from taipy.core.data.pickle import PickleDataNode
-from taipy.core.exceptions.exceptions import DataNodeConfigIsNotGlobal, InvalidExportPath
+from taipy.core.exceptions.exceptions import DataNodeConfigIsNotGlobal
 from taipy.core.job._job_manager import _JobManager
 from taipy.core.job.job import Job
 from taipy.core.scenario._scenario_manager import _ScenarioManager
@@ -351,7 +348,7 @@ class TestTaipy:
                 tp.submit(scenario)
 
         assert len(warning) == 1
-        assert "The Core service is NOT running" in warning[0].message.args[0]
+        assert "The Orchestrator service is NOT running" in warning[0].message.args[0]
 
     def test_get_tasks(self):
         with mock.patch("taipy.core.task._task_manager._TaskManager._get_all") as mck:
@@ -434,6 +431,56 @@ class TestTaipy:
         with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._get_all_by_tag") as mck:
             tp.get_scenarios(tag="tag")
             mck.assert_called_once_with("tag")
+        with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._filter_by_creation_time") as mck:
+            tp.get_scenarios(created_start_time=datetime.datetime(2021, 1, 1))
+            mck.assert_called_once_with([], datetime.datetime(2021, 1, 1), None)
+
+    def test_get_scenarios_sorted(self):
+        scenario_1_cfg = Config.configure_scenario(id="scenario_1")
+        scenario_2_cfg = Config.configure_scenario(id="scenario_2")
+
+        now = datetime.datetime.now() + datetime.timedelta(seconds=1)
+        scenario_1 = _ScenarioManager._create(scenario_1_cfg, now, "B_scenario")
+        scenario_2 = _ScenarioManager._create(scenario_2_cfg, now + datetime.timedelta(seconds=1), "C_scenario")
+        scenario_3 = _ScenarioManager._create(scenario_2_cfg, now + datetime.timedelta(seconds=2), "A_scenario")
+        scenario_4 = _ScenarioManager._create(scenario_2_cfg, now + datetime.timedelta(seconds=3), "D_scenario")
+
+        _ScenarioManager._tag(scenario_1, "banana")
+        _ScenarioManager._tag(scenario_1, "kiwi")  # scenario_1 now has tags {"banana", "kiwi"}
+        _ScenarioManager._tag(scenario_2, "apple")
+        _ScenarioManager._tag(scenario_2, "banana")  # scenario_2 now has tags {"banana", "apple"}
+        _ScenarioManager._tag(scenario_3, "apple")
+        _ScenarioManager._tag(scenario_3, "kiwi")  # scenario_3 now has tags {"kiwi", "apple"}
+
+        scenarios_sorted_by_name = [scenario_3, scenario_1, scenario_2, scenario_4]
+        assert scenarios_sorted_by_name == tp.get_scenarios(is_sorted=True, sort_key="name")
+        assert scenarios_sorted_by_name == tp.get_scenarios(is_sorted=True, sort_key="wrong_sort_key")
+
+        scenarios_with_same_config_id = [scenario_2, scenario_3, scenario_4]
+        scenarios_with_same_config_id.sort(key=lambda x: x.id)
+        scenarios_sorted_by_config_id = [
+            scenario_1,
+            scenarios_with_same_config_id[0],
+            scenarios_with_same_config_id[1],
+            scenarios_with_same_config_id[2],
+        ]
+        assert scenarios_sorted_by_config_id == tp.get_scenarios(is_sorted=True, sort_key="config_id")
+
+        scenarios_sorted_by_id = [scenario_1, scenario_2, scenario_3, scenario_4]
+        scenarios_sorted_by_id.sort(key=lambda x: x.id)
+        assert scenarios_sorted_by_id == tp.get_scenarios(is_sorted=True, sort_key="id")
+
+        scenarios_sorted_by_creation_date = [scenario_1, scenario_2, scenario_3, scenario_4]
+        assert scenarios_sorted_by_creation_date == tp.get_scenarios(is_sorted=True, sort_key="creation_date")
+
+        # Note: the scenario without any tags comes first.
+        scenarios_sorted_by_tag = [scenario_4, scenario_2, scenario_3, scenario_1]
+        assert scenarios_sorted_by_tag == tp.get_scenarios(is_sorted=True, sort_key="tags")
+
+        scenarios_sorted_by_name_descending_order = [scenario_4, scenario_2, scenario_1, scenario_3]
+        assert scenarios_sorted_by_name_descending_order == tp.get_scenarios(
+            is_sorted=True, descending=True, sort_key="name"
+        )
 
     def test_get_scenario(self, scenario):
         with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._get") as mck:
@@ -456,6 +503,9 @@ class TestTaipy:
         with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._get_primary_scenarios") as mck:
             tp.get_primary_scenarios()
             mck.assert_called_once_with()
+        with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._filter_by_creation_time") as mck:
+            tp.get_scenarios(created_end_time=datetime.datetime(2021, 1, 1))
+            mck.assert_called_once_with([], None, datetime.datetime(2021, 1, 1))
 
     def test_set_primary(self, scenario):
         with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._set_primary") as mck:
@@ -592,19 +642,19 @@ class TestTaipy:
             tp.get_latest_submission(task)
             mck.assert_called_once_with(task)
 
-    def test_block_config_when_core_is_running(self):
+    def test_block_config_when_orchestrator_is_running(self):
         input_cfg_1 = Config.configure_data_node(id="i1", storage_type="pickle", scope=Scope.SCENARIO, default_data=1)
         output_cfg_1 = Config.configure_data_node(id="o1", storage_type="pickle", scope=Scope.SCENARIO)
         task_cfg_1 = Config.configure_task("t1", print, input_cfg_1, output_cfg_1)
         Config.configure_scenario("s1", [task_cfg_1], [], Frequency.DAILY)
 
         with mock.patch("sys.argv", ["prog"]):
-            core = Core()
-            core.run()
+            orchestrator = Orchestrator()
+            orchestrator.run()
 
         with pytest.raises(ConfigurationUpdateBlocked):
             Config.configure_scenario("block_scenario", [task_cfg_1])
-        core.stop()
+        orchestrator.stop()
 
     def test_get_data_node(self, data_node):
         with mock.patch("taipy.core.data._data_manager._DataManager._get") as mck:
@@ -633,11 +683,23 @@ class TestTaipy:
             tp.exists(cycle_id)
             mck.assert_called_once_with(cycle_id)
 
+    def test_can_create(self):
+        global_dn_config = Config.configure_in_memory_data_node("global_dn", 10, scope=Scope.GLOBAL)
+        dn_config = Config.configure_in_memory_data_node("dn", 10)
+        task_config = Config.configure_task("task", print, [dn_config])
+        scenario_config = Config.configure_scenario("sc", {task_config}, [], Frequency.DAILY)
+
+        assert tp.can_create()
+        assert tp.can_create(scenario_config)
+        assert tp.can_create(global_dn_config)
+        assert not tp.can_create(dn_config)
+        assert not tp.can_create("1")
+
     def test_create_global_data_node(self):
         dn_cfg_global = DataNodeConfig("id", "pickle", Scope.GLOBAL)
         dn_cfg_scenario = DataNodeConfig("id", "pickle", Scope.SCENARIO)
         with mock.patch("taipy.core.data._data_manager._DataManager._create_and_set") as dn_create_mock:
-            with mock.patch("taipy.core._core.Core._manage_version_and_block_config") as mv_mock:
+            with mock.patch("taipy.core.orchestrator.Orchestrator._manage_version_and_block_config") as mv_mock:
                 dn = tp.create_global_data_node(dn_cfg_global)
                 dn_create_mock.assert_called_once_with(dn_cfg_global, None, None)
                 mv_mock.assert_called_once()
@@ -657,7 +719,7 @@ class TestTaipy:
     def test_create_scenario(self):
         scenario_config = ScenarioConfig("scenario_config")
         with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._create") as mck:
-            with mock.patch("taipy.core._core.Core._manage_version_and_block_config") as mv_mock:
+            with mock.patch("taipy.core.orchestrator.Orchestrator._manage_version_and_block_config") as mv_mock:
                 tp.create_scenario(scenario_config)
                 mck.assert_called_once_with(scenario_config, None, None)
                 mv_mock.assert_called_once()
@@ -667,58 +729,6 @@ class TestTaipy:
         with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._create") as mck:
             tp.create_scenario(scenario_config, datetime.datetime(2022, 2, 5), "displayable_name")
             mck.assert_called_once_with(scenario_config, datetime.datetime(2022, 2, 5), "displayable_name")
-
-    def test_export_scenario_filesystem(self):
-        shutil.rmtree("./tmp", ignore_errors=True)
-
-        input_cfg_1 = Config.configure_data_node(id="i1", storage_type="pickle", scope=Scope.SCENARIO, default_data=1)
-        output_cfg_1 = Config.configure_data_node(id="o1", storage_type="pickle", scope=Scope.SCENARIO)
-        task_cfg_1 = Config.configure_task("t1", print, input_cfg_1, output_cfg_1)
-        scenario_cfg_1 = Config.configure_scenario("s1", [task_cfg_1], [], Frequency.DAILY)
-
-        input_cfg_2 = Config.configure_data_node(id="i2", storage_type="pickle", scope=Scope.SCENARIO, default_data=2)
-        output_cfg_2 = Config.configure_data_node(id="o2", storage_type="pickle", scope=Scope.SCENARIO)
-        task_cfg_2 = Config.configure_task("t2", print, input_cfg_2, output_cfg_2)
-        scenario_cfg_2 = Config.configure_scenario("s2", [task_cfg_2], [], Frequency.DAILY)
-
-        scenario_1 = tp.create_scenario(scenario_cfg_1)
-        job_1 = tp.submit(scenario_1).jobs[0]
-
-        # Export scenario 1
-        tp.export_scenario(scenario_1.id, "./tmp/exp_scenario_1")
-        assert sorted(os.listdir("./tmp/exp_scenario_1/data_nodes")) == sorted(
-            [f"{scenario_1.i1.id}.json", f"{scenario_1.o1.id}.json"]
-        )
-        assert sorted(os.listdir("./tmp/exp_scenario_1/tasks")) == sorted([f"{scenario_1.t1.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_1/scenarios")) == sorted([f"{scenario_1.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_1/jobs")) == sorted([f"{job_1.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_1/cycles")) == sorted([f"{scenario_1.cycle.id}.json"])
-
-        scenario_2 = tp.create_scenario(scenario_cfg_2)
-        job_2 = tp.submit(scenario_2).jobs[0]
-
-        # Export scenario 2
-        scenario_2.export(pathlib.Path.cwd() / "./tmp/exp_scenario_2")
-        assert sorted(os.listdir("./tmp/exp_scenario_2/data_nodes")) == sorted(
-            [f"{scenario_2.i2.id}.json", f"{scenario_2.o2.id}.json"]
-        )
-        assert sorted(os.listdir("./tmp/exp_scenario_2/tasks")) == sorted([f"{scenario_2.t2.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_2/scenarios")) == sorted([f"{scenario_2.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_2/jobs")) == sorted([f"{job_2.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_2/cycles")) == sorted([f"{scenario_2.cycle.id}.json"])
-
-        # Export scenario 2 into the folder containing scenario 1 files
-        tp.export_scenario(scenario_2.id, "./tmp/exp_scenario_1")
-        # Should have the files as scenario 1 only
-        assert sorted(os.listdir("./tmp/exp_scenario_1/tasks")) == sorted([f"{scenario_2.t2.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_1/scenarios")) == sorted([f"{scenario_2.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_1/jobs")) == sorted([f"{job_2.id}.json"])
-        assert sorted(os.listdir("./tmp/exp_scenario_1/cycles")) == sorted([f"{scenario_2.cycle.id}.json"])
-
-        with pytest.raises(InvalidExportPath):
-            tp.export_scenario(scenario_2.id, Config.core.taipy_storage_folder)
-
-        shutil.rmtree("./tmp", ignore_errors=True)
 
     def test_get_parents(self):
         def assert_result_parents_and_expected_parents(parents, expected_parents):
@@ -859,3 +869,29 @@ class TestTaipy:
         assert len(tp.get_scenarios()) == 5
         assert len(tp.get_entities_by_config_id(scenario_config_1.id)) == 3
         assert len(tp.get_entities_by_config_id(scenario_config_2.id)) == 2
+
+    def test_can_duplicate(self):
+        dn_config = Config.configure_in_memory_data_node("dn", 10)
+        task_config = Config.configure_task("task", print, [dn_config])
+        scenario_config = Config.configure_scenario("sc", {task_config}, [], Frequency.DAILY)
+
+        scenario = tp.create_scenario(scenario_config)
+        assert tp.can_duplicate(scenario)
+        assert not tp.can_duplicate("1")
+
+    def test_duplicate_scenario(self):
+        dn_config = Config.configure_in_memory_data_node("dn", 10)
+        task_config = Config.configure_task("task", print, [dn_config])
+        scenario_config = Config.configure_scenario("sc", {task_config}, [], Frequency.DAILY)
+
+        scenario = tp.create_scenario(scenario_config)
+
+        with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._duplicate") as mck:
+            tp.duplicate_scenario(scenario)
+            mck.assert_called_once_with(scenario, None, None, True)
+        with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._duplicate") as mck:
+            tp.duplicate_scenario(scenario, datetime.datetime(2022, 2, 5))
+            mck.assert_called_once_with(scenario, datetime.datetime(2022, 2, 5), None, True)
+        with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._duplicate") as mck:
+            tp.duplicate_scenario(scenario, datetime.datetime(2022, 2, 5), "displayable_name")
+            mck.assert_called_once_with(scenario, datetime.datetime(2022, 2, 5), "displayable_name", True)

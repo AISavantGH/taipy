@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,5 +14,5 @@ from ._scenario_model import _ScenarioModel
 
 
 class _ScenarioFSRepository(_FileSystemRepository):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(model_type=_ScenarioModel, converter=_ScenarioConverter, dir_name="scenarios")

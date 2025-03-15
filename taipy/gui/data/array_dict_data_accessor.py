@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,39 +13,39 @@ import typing as t
 
 import pandas as pd
 
-from ..gui import Gui
 from ..utils import _MapDict
-from .data_format import _DataFormat
-from .pandas_data_accessor import _PandasDataAccessor
+from .pandas_based_data_accessor import _PandasBasedDataAccessor
 
 
-class _ArrayDictDataAccessor(_PandasDataAccessor):
+class _ArrayDictDataAccessor(_PandasBasedDataAccessor):
     __types = (dict, list, tuple, _MapDict)
 
     @staticmethod
-    def get_supported_classes() -> t.List[str]:
-        return [t.__name__ for t in _ArrayDictDataAccessor.__types]  # type: ignore
+    def get_supported_classes() -> t.List[t.Type]:
+        return list(_ArrayDictDataAccessor.__types)
 
-    def _get_dataframe(self, value: t.Any) -> t.Union[t.List[pd.DataFrame], pd.DataFrame]:
-        if isinstance(value, list):
+    def to_pandas(self, value: t.Any) -> t.Union[t.List[pd.DataFrame], pd.DataFrame]:
+        if isinstance(value, (list, tuple)):
             if not value or isinstance(value[0], (str, int, float, bool)):
                 return pd.DataFrame({"0": value})
             types = {type(x) for x in value}
             if len(types) == 1:
                 type_elt = next(iter(types), None)
-                if type_elt == list:
+                if type_elt is list:
                     lengths = {len(x) for x in value}
                     return (
                         pd.DataFrame(value)
                         if len(lengths) == 1
                         else [pd.DataFrame({f"{i}/0": v}) for i, v in enumerate(value)]
                     )
-                elif type_elt == dict:
+                elif type_elt is dict and isinstance(next(iter(t.cast(dict, value[0]).values()), None), (list, tuple)):
                     return [pd.DataFrame(v) for v in value]
-                elif type_elt == _MapDict:
+                elif type_elt is _MapDict and isinstance(
+                    next(iter(t.cast(_MapDict, value[0])._dict.values()), None), (list, tuple)
+                ):
                     return [pd.DataFrame(v._dict) for v in value]
-                elif type_elt == pd.DataFrame:
-                    return value
+                elif type_elt is pd.DataFrame:
+                    return t.cast(t.List[pd.DataFrame], value)
 
             elif len(types) == 2 and list in types and pd.DataFrame in types:
                 return [v if isinstance(v, pd.DataFrame) else pd.DataFrame({f"{i}/0": v}) for i, v in enumerate(value)]
@@ -53,14 +53,14 @@ class _ArrayDictDataAccessor(_PandasDataAccessor):
             return pd.DataFrame(value._dict)
         return pd.DataFrame(value)
 
-    def get_col_types(self, var_name: str, value: t.Any) -> t.Union[None, t.Dict[str, str]]:  # type: ignore
-        if isinstance(value, _ArrayDictDataAccessor.__types):  # type: ignore
-            return super().get_col_types(var_name, self._get_dataframe(value))
-        return None
-
-    def get_data(  # noqa: C901
-        self, guiApp: Gui, var_name: str, value: t.Any, payload: t.Dict[str, t.Any], data_format: _DataFormat
-    ) -> t.Dict[str, t.Any]:
-        if isinstance(value, _ArrayDictDataAccessor.__types):  # type: ignore
-            return super().get_data(guiApp, var_name, self._get_dataframe(value), payload, data_format)
-        return {}
+    def _from_pandas(self, value: pd.DataFrame, data_type: t.Type):
+        if data_type is dict:
+            return value.to_dict("list")
+        if data_type is _MapDict:
+            return _MapDict(value.to_dict("list"))
+        if len(value.columns) == 1:
+            if data_type is list:
+                return value.iloc[:, 0].to_list()
+            if data_type is tuple:
+                return tuple(value.iloc[:, 0].to_list())
+        return self._get_pandas_accessor()._from_pandas(value, data_type)

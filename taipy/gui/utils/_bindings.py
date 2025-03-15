@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -23,7 +23,7 @@ if t.TYPE_CHECKING:
 class _Bindings:
     def __init__(self, gui: "Gui") -> None:
         self.__gui = gui
-        self.__scopes = _DataScopes()
+        self.__scopes = _DataScopes(gui)
 
     def _bind(self, name: str, value: t.Any) -> None:
         if hasattr(self, name):
@@ -40,15 +40,15 @@ class _Bindings:
     def __get_property(self, name):
         def __setter(ud: _Bindings, value: t.Any):
             if isinstance(value, _MapDict):
-                value._update_var = None
+                value._update_var = None  # type: ignore[assignment]
             elif isinstance(value, dict):
                 value = _MapDict(value, None)
-            ud.__gui._update_var(name, value)
+            ud.__gui._update_var(name, value)  # type: ignore[attr-defined]
 
         def __getter(ud: _Bindings) -> t.Any:
             value = getattr(ud._get_data_scope(), name)
             if isinstance(value, _MapDict):
-                return _MapDict(value._dict, lambda k, v: ud.__gui._update_var(f"{name}.{k}", v))
+                return _MapDict(value._dict, lambda k, v: ud.__gui._update_var(f"{name}.{k}", v))  # type: ignore[attr-defined]
             else:
                 return value
 
@@ -64,18 +64,21 @@ class _Bindings:
         create = not id
         if create:
             id = f"{datetime.now().strftime('%Y%m%d%H%M%S%f')}-{random()}"
-            self.__gui._send_ws_id(id)
+            self.__gui._send_ws_id(id)  # type: ignore[attr-defined]
         self.__scopes.create_scope(id)
         return id, create
 
+    def _delete_scope(self, id: str):
+        self.__scopes.delete_scope(id)
+
     def _new_scopes(self):
-        self.__scopes = _DataScopes()
+        self.__scopes = _DataScopes(self.__gui)
 
     def _get_data_scope(self):
-        return self.__scopes.get_scope(self.__gui._get_client_id())[0]
+        return self.__scopes.get_scope(self.__gui._get_client_id())[0]  # type: ignore[attr-defined]
 
     def _get_data_scope_metadata(self):
-        return self.__scopes.get_scope(self.__gui._get_client_id())[1]
+        return self.__scopes.get_scope(self.__gui._get_client_id())[1]  # type: ignore[attr-defined]
 
     def _get_all_scopes(self):
         return self.__scopes.get_all_scopes()

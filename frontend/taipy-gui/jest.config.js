@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,11 +11,23 @@
  * specific language governing permissions and limitations under the License.
  */
 
-/** @type {import('ts-jest/dist/types').InitialOptionsTsJest} */
+const { createJsWithTsPreset } = require('ts-jest')
+
+
+/** @type {import('ts-jest/dist/types').JestConfigWithTsJest} */
 module.exports = {
- // testEnvironment: 'jest-environment-jsdom',
-  preset: 'ts-jest',
-  testEnvironment: 'jsdom',
-  setupFiles: ['./test-config/jest.env.js', './test-config/createObjectUrl.js', './test-config/Canvas.js', './test-config/mockFileUpload.js'],
-  coverageReporters: ["json", "html", "text"],
+    testEnvironment: "jsdom",
+    setupFiles: [
+        "./test-config/jest.env.js",
+        "./test-config/createObjectUrl.js",
+        "./test-config/Canvas.js",
+        "./test-config/mockFileUpload.js",
+        "./test-config/intersectionObserver.js",
+        "./test-config/nanoid.js",
+    ],
+    coverageReporters: ["json", "html", "text"],
+    modulePathIgnorePatterns: ["<rootDir>/packaging/"],
+    moduleNameMapper: {"react-markdown": "<rootDir>/test-config/markdown.tsx"},
+    transformIgnorePatterns: ["<rootDir>/node_modules/(?!react-jsx-parser/)"],
+    ...createJsWithTsPreset()
 };

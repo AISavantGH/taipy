@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,20 +12,17 @@
 import sys
 from typing import List
 
-from taipy._cli._base_cli._abstract_cli import _AbstractCLI
-from taipy._cli._base_cli._taipy_parser import _TaipyParser
-from taipy.config.config import Config
+from taipy.common._cli._base_cli._abstract_cli import _AbstractCLI
+from taipy.common._cli._base_cli._taipy_parser import _TaipyParser
+from taipy.common.config import Config
 
 from ._migrate import (
     _migrate_fs_entities,
     _migrate_mongo_entities,
-    _migrate_sql_entities,
     _remove_backup_file_entities,
     _remove_backup_mongo_entities,
-    _remove_backup_sql_entities,
     _restore_migrate_file_entities,
     _restore_migrate_mongo_entities,
-    _restore_migrate_sql_entities,
 )
 
 
@@ -43,8 +40,8 @@ class _MigrateCLI(_AbstractCLI):
         migrate_parser.add_argument(
             "--repository-type",
             nargs="+",
-            help="The type of repository to migrate. If filesystem or sql, a path to the database folder/.sqlite file "
-            "should be informed. In case of mongo host, port, user and password must be informed, if left empty it "
+            help="The type of repository to migrate. If filesystem, a path to the database folder should be informed. "
+            "In case of mongo host, port, user and password must be informed, if left empty it "
             "is assumed default values",
         )
         migrate_parser.add_argument(
@@ -92,9 +89,6 @@ class _MigrateCLI(_AbstractCLI):
             path = repository_args[0] or Config.core.taipy_storage_folder
             if not _remove_backup_file_entities(path):
                 sys.exit(1)
-        elif repository_type == "sql":
-            if not _remove_backup_sql_entities(repository_args[0]):
-                sys.exit(1)
         elif repository_type == "mongo":
             if not _remove_backup_mongo_entities():
                 sys.exit(1)
@@ -110,9 +104,6 @@ class _MigrateCLI(_AbstractCLI):
             path = repository_args[0] or Config.core.taipy_storage_folder
             if not _restore_migrate_file_entities(path):
                 sys.exit(1)
-        elif repository_type == "sql":
-            if not _restore_migrate_sql_entities(repository_args[0]):
-                sys.exit(1)
         elif repository_type == "mongo":
             mongo_args = repository_args[1:5] if repository_args[0] else []
             if not _restore_migrate_mongo_entities(*mongo_args):
@@ -127,10 +118,6 @@ class _MigrateCLI(_AbstractCLI):
         if repository_type == "filesystem":
             path = repository_args[0] or Config.core.taipy_storage_folder
             if not _migrate_fs_entities(path, do_backup):
-                sys.exit(1)
-
-        elif repository_type == "sql":
-            if not _migrate_sql_entities(repository_args[0], do_backup):
                 sys.exit(1)
 
         elif repository_type == "mongo":

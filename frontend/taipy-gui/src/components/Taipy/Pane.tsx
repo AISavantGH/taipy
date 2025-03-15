@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -17,13 +17,17 @@ import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
+
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import ExpandLess from "@mui/icons-material/ExpandLess";
+import ExpandMore from "@mui/icons-material/ExpandMore";
 
 import { createSendActionNameAction, createSendUpdateAction } from "../../context/taipyReducers";
 import { useClassNames, useDispatch, useDynamicProperty, useModule } from "../../utils/hooks";
 import TaipyRendered from "../pages/TaipyRendered";
-import { TaipyActiveProps, TaipyChangeProps } from "./utils";
+import { getSuffixedClassNames, TaipyActiveProps, TaipyChangeProps } from "./utils";
+import { getComponentClassName } from "./TaipyStyle";
 
 type AnchorType = "left" | "bottom" | "right" | "top" | undefined;
 
@@ -38,6 +42,7 @@ interface PaneProps extends TaipyActiveProps, TaipyChangeProps {
     partial?: boolean;
     height?: string | number;
     width?: string | number;
+    showButton?: boolean;
 }
 
 const getHeaderSx = (anchor: AnchorType) => {
@@ -61,6 +66,14 @@ const getDrawerSx = (horizontal: boolean, width: string | number, height: string
     },
 });
 
+const buttonDrawerSx = {
+    "& .MuiDrawer-paper": {
+        width: "fit-content",
+        height: "fit-content",
+        background: "transparent",
+    },
+};
+
 const Pane = (props: PaneProps) => {
     const {
         id,
@@ -74,6 +87,7 @@ const Pane = (props: PaneProps) => {
         width = "30vw",
         updateVarName,
         propagate = true,
+        showButton = false,
     } = props;
     const [open, setOpen] = useState(defaultOpen === "true" || defaultOpen === true);
     const dispatch = useDispatch();
@@ -91,12 +105,26 @@ const Pane = (props: PaneProps) => {
 
     const handleClose = useCallback(() => {
         if (active) {
+            setOpen(false);
             if (onClose) {
-                dispatch(createSendActionNameAction(id, module, onClose));
+                Promise.resolve().then(() => dispatch(createSendActionNameAction(id, module, onClose, false)));
             } else if (updateVarName) {
-                dispatch(createSendUpdateAction(updateVarName, false, module, props.onChange, propagate));
-            } else {
-                setOpen(false);
+                Promise.resolve().then(() =>
+                    dispatch(createSendUpdateAction(updateVarName, false, module, props.onChange, propagate))
+                );
+            }
+        }
+    }, [active, dispatch, id, onClose, updateVarName, propagate, props.onChange, module]);
+
+    const handleOpen = useCallback(() => {
+        if (active) {
+            setOpen(true);
+            if (onClose) {
+                Promise.resolve().then(() => dispatch(createSendActionNameAction(id, module, onClose, true)));
+            } else if (updateVarName) {
+                Promise.resolve().then(() =>
+                    dispatch(createSendUpdateAction(updateVarName, true, module, props.onChange, propagate))
+                );
             }
         }
     }, [active, dispatch, id, onClose, updateVarName, propagate, props.onChange, module]);
@@ -107,20 +135,20 @@ const Pane = (props: PaneProps) => {
         }
     }, [props.open]);
 
-    return !persistent || (persistent && open) ? (
+    return open ? (
         <Drawer
             sx={drawerSx}
             variant={persistent ? "permanent" : undefined}
             anchor={anchor}
             open={open}
             onClose={handleClose}
-            className={className}
+            className={`${className} ${getComponentClassName(props.children)}`}
         >
             {persistent ? (
                 <>
                     <Box sx={headerSx}>
                         <IconButton onClick={handleClose} disabled={!active}>
-                            {anchor === "left" ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+                            {anchor === "left" ? <ChevronLeftIcon /> : anchor === "right" ? <ChevronRightIcon />: anchor === "top" ? <ExpandLess/>: <ExpandMore/>}
                         </IconButton>
                     </Box>
                     <Divider />
@@ -132,6 +160,12 @@ const Pane = (props: PaneProps) => {
                     {props.children}
                 </>
             </Tooltip>
+        </Drawer>
+    ) : showButton ? (
+        <Drawer variant="permanent" sx={buttonDrawerSx} anchor={anchor} open={true} className={getSuffixedClassNames(className, "-button")}>
+            <IconButton onClick={handleOpen} disabled={!active}>
+                {anchor === "left" ? <ChevronRightIcon /> : anchor === "right" ? <ChevronLeftIcon /> : anchor === "top" ? <ExpandMore/> : <ExpandLess/>}
+            </IconButton>
         </Drawer>
     ) : null;
 };

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -10,13 +10,14 @@
 # specific language governing permissions and limitations under the License.
 
 import functools
+import re
 import time
 from collections import namedtuple
 from importlib import import_module
 from operator import attrgetter
 from typing import Callable, Optional, Tuple
 
-from taipy.config import Config
+from taipy.common.config import Config
 
 
 @functools.lru_cache
@@ -31,7 +32,7 @@ def _retry_repository_operation(exceptions: Tuple, sleep_time: float = 0.2):
     in ``exceptions`` are thrown.
     The number of retries is defined by Config.core.read_entity_retry.
 
-    Parameters:
+    Arguments:
         exceptions (tuple): Tuple of exceptions that trigger a retry attempt.
         sleep_time (float): Time to sleep between retries.
     """
@@ -77,6 +78,10 @@ def _fct_to_dict(obj):
 
 def _fcts_to_dict(objs):
     return [d for obj in objs if (d := _fct_to_dict(obj)) is not None]
+
+
+def _normalize_path(path: str) -> str:
+    return re.sub(r"[\\]+", "/", path)
 
 
 _Subscriber = namedtuple("_Subscriber", "callback params")

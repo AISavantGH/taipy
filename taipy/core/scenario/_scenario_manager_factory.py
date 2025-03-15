@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,27 +9,29 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
+from functools import lru_cache
 from typing import Type
 
 from .._manager._manager_factory import _ManagerFactory
+from ..common._check_dependencies import EnterpriseEditionUtils
 from ..common._utils import _load_fct
 from ._scenario_fs_repository import _ScenarioFSRepository
 from ._scenario_manager import _ScenarioManager
-from ._scenario_sql_repository import _ScenarioSQLRepository
 
 
 class _ScenarioManagerFactory(_ManagerFactory):
-
-    __REPOSITORY_MAP = {"default": _ScenarioFSRepository, "sql": _ScenarioSQLRepository}
+    __REPOSITORY_MAP = {"default": _ScenarioFSRepository}
 
     @classmethod
-    def _build_manager(cls) -> Type[_ScenarioManager]:  # type: ignore
-        if cls._using_enterprise():
+    @lru_cache
+    def _build_manager(cls) -> Type[_ScenarioManager]:
+        if EnterpriseEditionUtils._using_enterprise():
             scenario_manager = _load_fct(
-                cls._TAIPY_ENTERPRISE_CORE_MODULE + ".scenario._scenario_manager", "_ScenarioManager"
-            )  # type: ignore
+                EnterpriseEditionUtils._TAIPY_ENTERPRISE_CORE_MODULE + ".scenario._scenario_manager", "_ScenarioManager"
+            )
             build_repository = _load_fct(
-                cls._TAIPY_ENTERPRISE_CORE_MODULE + ".scenario._scenario_manager_factory", "_ScenarioManagerFactory"
+                EnterpriseEditionUtils._TAIPY_ENTERPRISE_CORE_MODULE + ".scenario._scenario_manager_factory",
+                "_ScenarioManagerFactory",
             )._build_repository  # type: ignore
         else:
             scenario_manager = _ScenarioManager
@@ -38,5 +40,6 @@ class _ScenarioManagerFactory(_ManagerFactory):
         return scenario_manager  # type: ignore
 
     @classmethod
+    @lru_cache
     def _build_repository(cls):
         return cls._get_repository_with_repo_map(cls.__REPOSITORY_MAP)()

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -16,8 +16,9 @@ import Box from "@mui/material/Box";
 
 import { useClassNames, useDynamicProperty } from "../../utils/hooks";
 import TaipyRendered from "../pages/TaipyRendered";
-import { TaipyBaseProps } from "./utils";
+import { expandSx, getCssSize, TaipyBaseProps } from "./utils";
 import { TaipyContext } from "../../context/taipyContext";
+import { getComponentClassName } from "./TaipyStyle";
 
 interface PartProps extends TaipyBaseProps {
     render?: boolean;
@@ -29,6 +30,7 @@ interface PartProps extends TaipyBaseProps {
     partial?: boolean;
     height?: string;
     defaultHeight?: string;
+    width?: string | number;
 }
 
 const IframeStyle = {
@@ -37,7 +39,7 @@ const IframeStyle = {
 };
 
 const Part = (props: PartProps) => {
-    const { id, children, partial, defaultPartial } = props;
+    const { id, partial, defaultPartial } = props;
     const { state } = useContext(TaipyContext);
 
     const className = useClassNames(props.libClassName, props.dynamicClassName, props.className);
@@ -55,15 +57,15 @@ const Part = (props: PartProps) => {
         return false;
     }, [state.locations, page, defaultPartial]);
 
-    const boxSx = useMemo(() => (height ? { height: height } : undefined), [height]);
+    const boxSx = useMemo(() => expandSx(height ? { height: height } : undefined, props.width ? {width: getCssSize(props.width)}: undefined), [height, props.width]);
     return render ? (
-        <Box id={id} className={className} sx={boxSx}>
+        <Box id={id} className={`${className} ${getComponentClassName(props.children)}`} sx={boxSx}>
             {iFrame ? (
                 <iframe src={page} style={IframeStyle} />
             ) : page ? (
                 <TaipyRendered path={"/" + page} partial={partial} fromBlock={true} />
             ) : null}
-            {children}
+            {props.children}
         </Box>
     ) : null;
 };

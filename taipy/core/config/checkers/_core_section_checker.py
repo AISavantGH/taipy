@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,9 +11,9 @@
 
 from typing import Set, cast
 
-from taipy.config._config import _Config
-from taipy.config.checker._checkers._config_checker import _ConfigChecker
-from taipy.config.checker.issue_collector import IssueCollector
+from taipy.common.config._config import _Config
+from taipy.common.config.checker._checkers._config_checker import _ConfigChecker
+from taipy.common.config.checker.issue_collector import IssueCollector
 
 from ..core_section import CoreSection
 

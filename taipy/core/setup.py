@@ -1,6 +1,4 @@
-#!/usr/bin/env python
-
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,11 +9,9 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-"""The setup script."""
 import json
 import os
 from pathlib import Path
-
 from setuptools import find_namespace_packages, find_packages, setup
 
 root_folder = Path(__file__).parent
@@ -30,10 +26,7 @@ with open(version_path) as version_file:
     if vext := version.get("ext"):
         version_string = f"{version_string}.{vext}"
 
-
-
 def get_requirements():
-    # get requirements from the different setups in tools/packages (removing taipy packages)
     reqs = set()
     for pkg in (root_folder / "tools" / "packages").iterdir():
         if "taipy-core" not in str(pkg):
@@ -44,47 +37,23 @@ def get_requirements():
 
     return [r for r in reqs if r and not r.startswith("taipy")]
 
-
 test_requirements = ["pytest>=3.8"]
 
 extras_require = {
     "mssql": ["pyodbc>=4,<4.1"],
     "mysql": ["pymysql>1,<1.1"],
     "postgresql": ["psycopg2>2.9,<2.10"],
-    "parquet": ["fastparquet==2022.11.0", "pyarrow>=14.0.2,<15.0"],
+    "parquet": ["fastparquet==2022.11.0", "pyarrow>=16.0.0,<19.0"],
     "s3": ["boto3==1.29.1"],
     "mongo": ["pymongo[srv]>=4.2.0,<5.0"],
 }
 
 setup(
-    author="Avaiga",
-    author_email="dev@taipy.io",
-    python_requires=">=3.8",
-    classifiers=[
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: Apache Software License",
-        "Natural Language :: English",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-    ],
-    description="A Python library to build powerful and customized data-driven back-end applications.",
+    version=version_string,
     install_requires=get_requirements(),
-    long_description=readme,
-    long_description_content_type="text/markdown",
-    license="Apache License 2.0",
-    keywords="taipy-core",
-    name="taipy-core",
     packages=find_namespace_packages(where=".") + find_packages(include=["taipy", "taipy.core", "taipy.core.*"]),
     include_package_data=True,
     data_files=[('version', ['version.json'])],
-    test_suite="tests",
     tests_require=test_requirements,
-    url="https://github.com/avaiga/taipy-core",
-    version=version_string,
-    zip_safe=False,
     extras_require=extras_require,
 )

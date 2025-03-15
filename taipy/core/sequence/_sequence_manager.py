@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,8 +9,6 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-import json
-import pathlib
 from functools import partial
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -20,6 +18,7 @@ from .._version._version_mixin import _VersionMixin
 from ..common._utils import _Subscriber
 from ..common.warn_if_inputs_not_ready import _warn_if_inputs_not_ready
 from ..exceptions.exceptions import (
+    InvalidSequence,
     InvalidSequenceId,
     ModelNotFound,
     NonExistingSequence,
@@ -30,6 +29,7 @@ from ..job._job_manager_factory import _JobManagerFactory
 from ..job.job import Job
 from ..notification import Event, EventEntityType, EventOperation, Notifier
 from ..notification.event import _make_event
+from ..reason import EntityDoesNotExist, EntityIsNotSubmittableEntity, ReasonCollection
 from ..scenario._scenario_manager_factory import _ScenarioManagerFactory
 from ..scenario.scenario import Scenario
 from ..scenario.scenario_id import ScenarioId
@@ -47,7 +47,7 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
     _model_name = "sequences"
 
     @classmethod
-    def _delete(cls, sequence_id: SequenceId):
+    def _delete(cls, sequence_id: SequenceId) -> None:
         """
         Deletes a Sequence by id.
         """
@@ -62,7 +62,7 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
         raise ModelNotFound(cls._model_name, sequence_id)
 
     @classmethod
-    def _delete_all(cls):
+    def _delete_all(cls) -> None:
         """
         Deletes all Sequences.
         """
@@ -73,7 +73,7 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
             Notifier.publish(Event(cls._EVENT_ENTITY_TYPE, EventOperation.DELETION, metadata={"delete_all": True}))
 
     @classmethod
-    def _delete_many(cls, sequence_ids: Iterable[str]):
+    def _delete_many(cls, sequence_ids: Iterable[SequenceId]) -> None:
         """
         Deletes Sequence entities by a list of Sequence ids.
         """
@@ -102,7 +102,7 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
             raise ModelNotFound(cls._model_name, sequence_id) from None
 
     @classmethod
-    def _delete_by_version(cls, version_number: str):
+    def _delete_by_version(cls, version_number: str) -> None:
         """
         Deletes Sequences by version number.
         """
@@ -110,14 +110,14 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
             cls._delete_many(scenario.sequences.values())
 
     @classmethod
-    def _hard_delete(cls, sequence_id: SequenceId):
+    def _hard_delete(cls, sequence_id: SequenceId) -> None:
         sequence = cls._get(sequence_id)
         entity_ids_to_delete = cls._get_children_entity_ids(sequence)
         entity_ids_to_delete.sequence_ids.add(sequence.id)
         cls._delete_entities_of_multiple_types(entity_ids_to_delete)
 
     @classmethod
-    def _set(cls, sequence: Sequence):
+    def _set(cls, sequence: Sequence) -> None:
         """
         Save or update a Sequence.
         """
@@ -136,6 +136,65 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
             cls._logger.error(f"Sequence {sequence.id} belongs to a non-existing Scenario {scenario_id}.")
             raise SequenceBelongsToNonExistingScenario(sequence.id, scenario_id)
 
+    @staticmethod
+    def __get_sequence_tasks(tasks: Union[List[Task], List[TaskId]]) -> List[Task]:
+        task_manager = _TaskManagerFactory._build_manager()
+        _tasks: List[Task] = []
+        for task in tasks:
+            if isinstance(task, Task):
+                _tasks.append(task)
+            elif _task := task_manager._get(task):
+                _tasks.append(_task)
+            else:
+                raise NonExistingTask(task)
+        return _tasks
+
+    @classmethod
+    def _build_sequence(
+        cls,
+        sequence_name: str,
+        tasks: Union[List[Task], List[TaskId]],
+        subscribers: Optional[List[_Subscriber]] = None,
+        properties: Optional[Dict] = None,
+        scenario_id: Optional[ScenarioId] = None,
+        version: Optional[str] = None,
+    ) -> Sequence:
+        sequence_id = Sequence._new_id(sequence_name, scenario_id)
+        _tasks = cls.__get_sequence_tasks(tasks)
+        properties = properties if properties else {}
+        properties["name"] = sequence_name
+        version = version if version else cls._get_latest_version()
+        return Sequence(
+            properties=properties,
+            tasks=_tasks,
+            sequence_id=sequence_id,
+            owner_id=scenario_id,
+            parent_ids={scenario_id} if scenario_id else None,
+            subscribers=subscribers,
+            version=version,
+        )
+
+    @classmethod
+    def _bulk_create_from_scenario(cls, scenario: Scenario) -> Dict[str, Sequence]:
+        _sequences: Dict[str, Sequence] = {}
+
+        for sequence_name, sequence_data in scenario._sequences.items():
+            sequence = cls._create(
+                sequence_name,
+                sequence_data.get(scenario._SEQUENCE_TASKS_KEY, []),
+                sequence_data.get(scenario._SEQUENCE_SUBSCRIBERS_KEY, []),
+                sequence_data.get(scenario._SEQUENCE_PROPERTIES_KEY, {}),
+                scenario.id,
+                scenario.version,
+            )
+            if not isinstance(sequence, Sequence):
+                raise NonExistingSequence(sequence_name, scenario.id)
+            _sequences[sequence_name] = sequence
+
+            Notifier.publish(_make_event(sequence, EventOperation.CREATION))
+
+        return _sequences
+
     @classmethod
     def _create(
         cls,
@@ -146,34 +205,20 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
         scenario_id: Optional[ScenarioId] = None,
         version: Optional[str] = None,
     ) -> Sequence:
-        sequence_id = Sequence._new_id(sequence_name, scenario_id)
-
         task_manager = _TaskManagerFactory._build_manager()
-        _tasks: List[Task] = []
-        for task in tasks:
-            if isinstance(task, Task):
-                _tasks.append(task)
-            elif _task := task_manager._get(task):
-                _tasks.append(_task)
-            else:
-                raise NonExistingTask(task)
+        _tasks = cls.__get_sequence_tasks(tasks)
 
-        properties = properties if properties else {}
-        properties["name"] = sequence_name
-        version = version if version else cls._get_latest_version()
-        sequence = Sequence(
-            properties=properties,
-            tasks=_tasks,
-            sequence_id=sequence_id,
-            owner_id=scenario_id,
-            parent_ids={scenario_id} if scenario_id else None,
-            subscribers=subscribers,
-            version=version,
-        )
+        sequence = cls._build_sequence(sequence_name, _tasks, subscribers, properties, scenario_id, version)
+        sequence_id = sequence.id
+
         for task in _tasks:
             if sequence_id not in task._parent_ids:
                 task._parent_ids.update([sequence_id])
                 task_manager._set(task)
+
+        if not sequence._is_consistent():
+            raise InvalidSequence(sequence_id)
+
         return sequence
 
     @classmethod
@@ -263,7 +308,7 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
         callback: Callable[[Sequence, Job], None],
         params: Optional[List[Any]] = None,
         sequence: Optional[Sequence] = None,
-    ):
+    ) -> None:
         if sequence is None:
             sequences = cls._get_all()
             for pln in sequences:
@@ -277,7 +322,7 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
         callback: Callable[[Sequence, Job], None],
         params: Optional[List[Any]] = None,
         sequence: Optional[Sequence] = None,
-    ):
+    ) -> None:
         if sequence is None:
             sequences = cls._get_all()
             for pln in sequences:
@@ -296,10 +341,22 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
         Notifier.publish(_make_event(sequence, EventOperation.UPDATE, attribute_name="subscribers"))
 
     @classmethod
-    def _is_submittable(cls, sequence: Union[Sequence, SequenceId]) -> bool:
+    def _is_submittable(cls, sequence: Union[Sequence, SequenceId]) -> ReasonCollection:
+        reason_collector = ReasonCollection()
+
         if isinstance(sequence, str):
+            sequence_id = sequence
             sequence = cls._get(sequence)
-        return isinstance(sequence, Sequence) and sequence.is_ready_to_run()
+            if sequence is None:
+                reason_collector._add_reason(sequence_id, EntityDoesNotExist(sequence_id))
+                return reason_collector
+
+        if not isinstance(sequence, Sequence):
+            reason_collector._add_reason(str(sequence), EntityIsNotSubmittableEntity(str(sequence)))
+        else:
+            return sequence.is_ready_to_run()
+
+        return reason_collector
 
     @classmethod
     def _submit(
@@ -308,7 +365,7 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
         callbacks: Optional[List[Callable]] = None,
         force: bool = False,
         wait: bool = False,
-        timeout: Optional[Union[float, int]] = None,
+        timeout: Union[float, int, None] = None,
         check_inputs_are_ready: bool = True,
         **properties,
     ) -> Submission:
@@ -337,37 +394,16 @@ class _SequenceManager(_Manager[Sequence], _VersionMixin):
         return submission
 
     @classmethod
-    def _exists(cls, entity_id: str) -> bool:
+    def _exists(cls, entity_id: str) -> ReasonCollection:
         """
         Returns True if the entity id exists.
         """
-        return True if cls._get(entity_id) else False
+        reason_collector = ReasonCollection()
 
-    @classmethod
-    def _export(cls, id: str, folder_path: Union[str, pathlib.Path]):
-        """
-        Export a Sequence entity.
-        """
-        if isinstance(folder_path, str):
-            folder: pathlib.Path = pathlib.Path(folder_path)
-        else:
-            folder = folder_path
+        if cls._get(entity_id) is None:
+            reason_collector._add_reason(entity_id, EntityDoesNotExist(entity_id))
 
-        export_dir = folder / cls._model_name
-        if not export_dir.exists():
-            export_dir.mkdir(parents=True)
-
-        export_path = export_dir / f"{id}.json"
-        sequence_name, scenario_id = cls._breakdown_sequence_id(id)
-        sequence = {"id": id, "owner_id": scenario_id, "parent_ids": [scenario_id], "name": sequence_name}
-
-        scenario = _ScenarioManagerFactory._build_manager()._get(scenario_id)
-        if sequence_data := scenario._sequences.get(sequence_name, None):
-            sequence.update(sequence_data)
-            with open(export_path, "w", encoding="utf-8") as export_file:
-                export_file.write(json.dumps(sequence))
-        else:
-            raise ModelNotFound(cls._model_name, id)
+        return reason_collector
 
     @classmethod
     def __log_error_entity_not_found(cls, sequence_id: Union[SequenceId, str]):

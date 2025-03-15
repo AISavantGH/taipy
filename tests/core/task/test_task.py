@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,15 +13,18 @@ from unittest import mock
 
 import pytest
 
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
-from taipy.config.exceptions.exceptions import InvalidConfigurationId
+from taipy import Scope
+from taipy.common.config import Config
+from taipy.common.config.exceptions.exceptions import InvalidConfigurationId
 from taipy.core.config.data_node_config import DataNodeConfig
 from taipy.core.data._data_manager import _DataManager
 from taipy.core.data.csv import CSVDataNode
 from taipy.core.data.data_node import DataNode
 from taipy.core.data.in_memory import InMemoryDataNode
+from taipy.core.exceptions import AttributeKeyAlreadyExisted
+from taipy.core.scenario._scenario_manager import _ScenarioManager
 from taipy.core.task._task_manager import _TaskManager
+from taipy.core.task._task_manager_factory import _TaskManagerFactory
 from taipy.core.task.task import Task
 
 
@@ -43,6 +46,21 @@ def input():
 @pytest.fixture
 def input_config():
     return [DataNodeConfig("input_name_1"), DataNodeConfig("input_name_2"), DataNodeConfig("input_name_3")]
+
+
+def test_task_equals(task):
+    task_manager = _TaskManagerFactory()._build_manager()
+
+    task_id = task.id
+    task_manager._set(task)
+
+    # To test if instance is same type
+    dn = CSVDataNode("foo_bar", Scope.SCENARIO, task_id)
+
+    task_2 = task_manager._get(task_id)
+    assert task == task_2
+    assert task != task_id
+    assert task != dn
 
 
 def test_create_task():
@@ -78,7 +96,7 @@ def test_create_task():
     assert task.owner_id == "owner_id"
     assert task.parent_ids == {"parent_id_1", "parent_id_2"}
     assert task.name_1ea == abc_dn
-    assert task.name_1ea.path == path
+    assert task.name_1ea.properties["path"] == path
     with pytest.raises(AttributeError):
         _ = task.bar
     with mock.patch("taipy.core.get") as get_mck:
@@ -92,6 +110,20 @@ def test_create_task():
         get_mck.return_value = MockOwner()
         assert task.get_label() == "owner_label > " + task.config_id
         assert task.get_simple_label() == task.config_id
+
+
+def test_get_set_attribute():
+    dn_cfg = Config.configure_data_node("bar")
+    task_config = Config.configure_task("print", print, [dn_cfg], None)
+    scenario_config = Config.configure_scenario("scenario", [task_config])
+    scenario = _ScenarioManager._create(scenario_config)
+    task = scenario.tasks["print"]
+
+    task.key = "value"
+    assert task.key == "value"
+
+    with pytest.raises(AttributeKeyAlreadyExisted):
+        task.bar = "KeyAlreadyUsed"
 
 
 def test_can_not_change_task_output(output):

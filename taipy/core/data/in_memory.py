@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,9 +12,8 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Set
 
-from taipy.config.common.scope import Scope
-
 from .._version._version_manager_factory import _VersionManagerFactory
+from ..common.scope import Scope
 from .data_node import DataNode
 from .data_node_id import DataNodeId, Edit
 
@@ -26,34 +25,13 @@ class InMemoryDataNode(DataNode):
 
     Warning:
         This Data Node implementation is not compatible with a parallel execution of taipy tasks,
-        but only with a task executor in development mode. The purpose of `InMemoryDataNode` is to be used
-        for development or debugging.
+        but only with a task executor in development mode. The purpose of `InMemoryDataNode` is
+        mostly to be used for development, prototyping, or debugging.
 
-    Attributes:
-        config_id (str): Identifier of the data node configuration. It must be a valid Python
-            identifier.
-        scope (Scope^): The scope of this data node.
-        id (str): The unique identifier of this data node.
-        owner_id (str): The identifier of the owner (sequence_id, scenario_id, cycle_id) or
-            `None`.
-        parent_ids (Optional[Set[str]]): The identifiers of the parent tasks or `None`.
-        last_edit_date (datetime): The date and time of the last modification.
-        edits (List[Edit^]): The ordered list of edits for that job.
-        version (str): The string indicates the application version of the data node to instantiate. If not provided,
-            the current version is used.
-        validity_period (Optional[timedelta]): The duration implemented as a timedelta since the last edit date for
-            which the data node can be considered up-to-date. Once the validity period has passed, the data node is
-            considered stale and relevant tasks will run even if they are skippable (see the
-            [Task management page](../core/entities/task-mgt.md) for more details).
-            If _validity_period_ is set to `None`, the data node is always up-to-date.
-        edit_in_progress (bool): True if a task computing the data node has been submitted
-            and not completed yet. False otherwise.
-        editor_id (Optional[str]): The identifier of the user who is currently editing the data node.
-        editor_expiration_date (Optional[datetime]): The expiration date of the editor lock.
-        properties (dict[str, Any]): A dictionary of additional properties. When creating an
-            _In Memory_ data node, if the _properties_ dictionary contains a _"default_data"_
-            entry, the data node is automatically written with the corresponding _"default_data"_
-            value.
+    The *properties* attribute can also contain the following optional entries:
+
+    - *default_data* (`Any`): The default data of the data node. It is used at the data node
+        instantiation
     """
 
     __STORAGE_TYPE = "in_memory"
@@ -75,7 +53,7 @@ class InMemoryDataNode(DataNode):
         editor_id: Optional[str] = None,
         editor_expiration_date: Optional[datetime] = None,
         properties=None,
-    ):
+    ) -> None:
         if properties is None:
             properties = {}
         default_value = properties.pop(self.__DEFAULT_DATA_VALUE, None)
@@ -92,7 +70,7 @@ class InMemoryDataNode(DataNode):
             edit_in_progress,
             editor_id,
             editor_expiration_date,
-            **properties
+            **properties,
         )
         if default_value is not None and self.id not in in_memory_storage:
             self._write(default_value)
@@ -101,8 +79,8 @@ class InMemoryDataNode(DataNode):
                 Edit(
                     {
                         "timestamp": self._last_edit_date,
-                        "writer_identifier": "TAIPY",
-                        "comments": "Default data written.",
+                        "editor": "TAIPY",
+                        "comment": "Default data written.",
                     }
                 )
             )
@@ -111,6 +89,7 @@ class InMemoryDataNode(DataNode):
 
     @classmethod
     def storage_type(cls) -> str:
+        """Return the storage type of the data node: "in_memory"."""
         return cls.__STORAGE_TYPE
 
     def _read(self):

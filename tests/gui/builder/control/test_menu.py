@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -21,8 +21,8 @@ def test_menu_builder(gui: Gui, test_client, helpers):
         "<MenuCtl",
         'libClassName="taipy-menu"',
         'defaultLov="[&quot;Item 1&quot;, &quot;Item 2&quot;, &quot;Item 3&quot;, &quot;Item 4&quot;]"',
-        "lov={_TpL_tpec_TpExPr_lov_TPMDL_0}",
+        "lov={_TpL_tp_TpExPr_gui_get_adapted_lov_lov_str_TPMDL_0_0}",
         'onAction="on_menu_action"',
-        'updateVars="lov=_TpL_tpec_TpExPr_lov_TPMDL_0"',
+        'updateVars="lov=_TpL_tp_TpExPr_gui_get_adapted_lov_lov_str_TPMDL_0_0"',
     ]
     helpers.test_control_builder(gui, page, expected_list)

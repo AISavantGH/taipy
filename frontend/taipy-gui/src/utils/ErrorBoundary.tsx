@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -23,8 +23,10 @@ interface ErrorFallBackProps {
 const ErrorFallback = (props: ErrorFallBackProps) => (
     <Box sx={{ backgroundColor: "error.main" }}>
         <Box>Something went wrong ...</Box>
-        <Box>{(props.error as Error).message}</Box>
-        <Button onClick={props.resetErrorBoundary}>Try again</Button>
+        <Box>{props.error.message}</Box>
+        <Button onClick={props.resetErrorBoundary} color="secondary">
+            Try again
+        </Button>
     </Box>
 );
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -22,7 +22,7 @@ import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
 import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
-import Grid from "@mui/material/Grid";
+import Grid from "@mui/material/Grid2";
 import InputLabel from "@mui/material/InputLabel";
 import OutlinedInput from "@mui/material/OutlinedInput";
 import ListItemText from "@mui/material/ListItemText";
@@ -33,7 +33,15 @@ import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 
-import { ColumnDesc, Table, TraceValueType, createSendActionNameAction, useDispatch, useModule } from "taipy-gui";
+import {
+    ColumnDesc,
+    Table,
+    TraceValueType,
+    createSendActionNameAction,
+    getUpdateVar,
+    useDispatch,
+    useModule,
+} from "taipy-gui";
 
 import { ChartViewType, MenuProps, TableViewType, selectSx, tabularHeaderSx } from "./utils";
 
@@ -44,19 +52,20 @@ interface DataNodeTableProps {
     data?: Record<string, TraceValueType>;
     columns?: Record<string, ColumnDesc>;
     updateVarName?: string;
-    uniqid: string;
+    uniqId: string;
     onEdit?: string;
     onViewTypeChange: (e: MouseEvent, value?: string) => void;
     onLock?: string;
     editInProgress?: boolean;
     editLock: MutableRefObject<boolean>;
-    editable: boolean;
+    notEditableReason: string;
+    updateDnVars?: string;
 }
 
 const pushRightSx = { ml: "auto" };
 
 const DataNodeTable = (props: DataNodeTableProps) => {
-    const { uniqid, configId, nodeId, columns = "", onViewTypeChange, editable } = props;
+    const { uniqId, configId, nodeId, columns = "", onViewTypeChange, notEditableReason, updateDnVars = "" } = props;
 
     const dispatch = useDispatch();
     const module = useModule();
@@ -99,9 +108,9 @@ const DataNodeTable = (props: DataNodeTableProps) => {
     useEffect(() => {
         if (columns) {
             const res = {} as Record<string, ColumnDesc>;
-            const dfids = {} as Record<string, string>;
-            Object.entries(columns).forEach(([k, v]) => (dfids[v.dfid] = k));
-            selectedCols.forEach((c) => dfids[c] && (res[dfids[c]] = columns[dfids[c]]));
+            const dfIds = {} as Record<string, string>;
+            Object.entries(columns).forEach(([k, v]) => (dfIds[v.dfid] = k));
+            selectedCols.forEach((c) => dfIds[c] && (res[dfIds[c]] = columns[dfIds[c]]));
             setTabCols(res);
         }
     }, [columns, selectedCols]);
@@ -111,13 +120,24 @@ const DataNodeTable = (props: DataNodeTableProps) => {
         () =>
             setTableEdit((e) => {
                 props.editLock.current = !e;
-                dispatch(createSendActionNameAction("", module, props.onLock, { id: nodeId, lock: !e }));
+                dispatch(
+                    createSendActionNameAction("", module, props.onLock, {
+                        id: nodeId,
+                        lock: !e,
+                        error_id: getUpdateVar(updateDnVars, "error_id"),
+                    })
+                );
                 return !e;
             }),
-        [nodeId, dispatch, module, props.onLock, props.editLock]
+        [nodeId, dispatch, module, props.onLock, props.editLock, updateDnVars]
     );
 
-    const userData = useMemo(() => ({ dn_id: nodeId, comment: "" }), [nodeId]);
+    const userData = useMemo(() => {
+        const ret: Record<string, unknown> = { dn_id: nodeId, comment: "" };
+        const idVar = getUpdateVar(updateDnVars, "data_id");
+        idVar && (ret.context = { [idVar]: nodeId, data_id: idVar, error_id: getUpdateVar(updateDnVars, "error_id") });
+        return ret;
+    }, [nodeId, updateDnVars]);
     const [comment, setComment] = useState("");
     const changeComment = useCallback(
         (e: ChangeEvent<HTMLInputElement>) => {
@@ -130,7 +150,7 @@ const DataNodeTable = (props: DataNodeTableProps) => {
     return (
         <>
             <Grid container sx={tabularHeaderSx}>
-                <Grid item>
+                <Grid>
                     <Box className="taipy-toggle">
                         <ToggleButtonGroup onChange={onViewTypeChange} exclusive value={TableViewType} color="primary">
                             <ToggleButton value={TableViewType}>
@@ -142,11 +162,11 @@ const DataNodeTable = (props: DataNodeTableProps) => {
                         </ToggleButtonGroup>
                     </Box>
                 </Grid>
-                <Grid item>
+                <Grid>
                     <FormControl sx={selectSx} fullWidth className="taipy-selector">
-                        <InputLabel id={uniqid + "-cols-label"}>Columns</InputLabel>
+                        <InputLabel id={uniqId + "-cols-label"}>Columns</InputLabel>
                         <Select
-                            labelId={uniqid + "-cols-label"}
+                            labelId={uniqId + "-cols-label"}
                             multiple
                             value={selectedCols}
                             onChange={onColsChange}
@@ -164,7 +184,7 @@ const DataNodeTable = (props: DataNodeTableProps) => {
                         </Select>
                     </FormControl>
                 </Grid>
-                <Grid item>
+                <Grid>
                     <Button
                         onClick={resetCols}
                         variant="text"
@@ -176,13 +196,13 @@ const DataNodeTable = (props: DataNodeTableProps) => {
                     </Button>
                 </Grid>
                 {tableEdit ? (
-                    <Grid item sx={pushRightSx}>
+                    <Grid sx={pushRightSx}>
                         <TextField value={comment} onChange={changeComment} label="Comment"></TextField>
                     </Grid>
                 ) : null}
-                <Grid item sx={tableEdit ? undefined : pushRightSx}>
+                <Grid sx={tableEdit ? undefined : pushRightSx}>
                     <FormControlLabel
-                        disabled={!props.active || !editable || !!props.editInProgress}
+                        disabled={!props.active || !!notEditableReason || !!props.editInProgress}
                         control={<Switch color="primary" checked={tableEdit} onChange={toggleTableEdit} />}
                         label="Edit data"
                         labelPlacement="start"
@@ -195,9 +215,11 @@ const DataNodeTable = (props: DataNodeTableProps) => {
                 updateVarName={props.updateVarName}
                 data={props.data}
                 userData={userData}
-                onEdit={tableEdit ? props.onEdit : undefined}
+                onEdit={props.onEdit}
+                editable={tableEdit}
                 filter={true}
                 libClassName="taipy-table"
+                pageSize={25}
             />
         </>
     );

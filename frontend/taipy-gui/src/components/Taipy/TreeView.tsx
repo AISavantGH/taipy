@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -43,6 +43,7 @@ import {
 import { LovItem } from "../../utils/lov";
 import { getUpdateVar } from "./utils";
 import { Icon } from "../../utils/icon";
+import { getComponentClassName } from "./TaipyStyle";
 
 const treeSlots = { expandIcon: ChevronRightIcon };
 
@@ -228,7 +229,7 @@ const TreeView = (props: TreeViewProps) => {
             let parsedValue;
             try {
                 parsedValue = JSON.parse(defaultValue);
-            } catch (e) {
+            } catch {
                 parsedValue = defaultValue;
             }
             setSelectedValue(Array.isArray(parsedValue) ? parsedValue : [parsedValue]);
@@ -280,10 +281,13 @@ const TreeView = (props: TreeViewProps) => {
         [oneExpanded, refreshExpanded, lovList, propagate, updateVars, dispatch, props.onChange, module]
     );
 
-    const treeProps = useMemo(() => ({ multiSelect: multiple, selectedItems: selectedValue }), [multiple, selectedValue]);
+    const treeProps = useMemo(
+        () => ({ multiSelect: multiple, selectedItems: selectedValue }),
+        [multiple, selectedValue]
+    );
 
     return (
-        <Box id={id} sx={boxSx} className={className}>
+        <Box id={id} sx={boxSx} className={`${className} ${getComponentClassName(props.children)}`}>
             <Tooltip title={hover || ""}>
                 <Paper sx={paperSx}>
                     <Box>
@@ -311,6 +315,7 @@ const TreeView = (props: TreeViewProps) => {
                     </MuiTreeView>
                 </Paper>
             </Tooltip>
+            {props.children}
         </Box>
     );
 };

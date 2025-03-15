@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,7 +11,6 @@
 
 from unittest import mock
 
-import pytest
 from flask import url_for
 
 
@@ -35,8 +34,9 @@ def test_delete_scenario(client):
     rep = client.get(user_url)
     assert rep.status_code == 404
 
-    with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._delete"), mock.patch(
-        "taipy.core.scenario._scenario_manager._ScenarioManager._get"
+    with (
+        mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._delete"),
+        mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._get"),
     ):
         # test get_scenario
         rep = client.delete(url_for("api.scenario_by_id", scenario_id="foo"))
@@ -65,7 +65,7 @@ def test_get_all_scenarios(client, default_sequence, default_scenario_config_lis
     for ds in range(10):
         with mock.patch("taipy.rest.api.resources.scenario.ScenarioList.fetch_config") as config_mock:
             config_mock.return_value = default_scenario_config_list[ds]
-            scenarios_url = url_for("api.scenarios", config_id=config_mock.name)
+            scenarios_url = url_for("api.scenarios", config_id=default_scenario_config_list[ds].name)
             client.post(scenarios_url)
 
     rep = client.get(scenarios_url)
@@ -75,16 +75,16 @@ def test_get_all_scenarios(client, default_sequence, default_scenario_config_lis
     assert len(results) == 10
 
 
-@pytest.mark.xfail()
-def test_execute_scenario(client, default_scenario):
+def test_execute_scenario(client, default_scenario_config):
     # test 404
     user_url = url_for("api.scenario_submit", scenario_id="foo")
     rep = client.post(user_url)
     assert rep.status_code == 404
 
-    with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._get") as manager_mock:
-        manager_mock.return_value = default_scenario
+    with mock.patch("taipy.rest.api.resources.scenario.ScenarioList.fetch_config") as config_mock:
+        config_mock.return_value = default_scenario_config
+        scenarios_url = url_for("api.scenarios", config_id="bar")
+        scn = client.post(scenarios_url)
 
-        # test get_scenario
-        rep = client.post(url_for("api.scenario_submit", scenario_id="foo"))
-        assert rep.status_code == 200
+    rep = client.post(url_for("api.scenario_submit", scenario_id=scn.json["scenario"]["id"]))
+    assert rep.status_code == 200

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -17,9 +17,13 @@ const uploadFile = (
     blobOrFile: Blob,
     uploadUrl: string,
     varName: string,
+    context: string | undefined,
+    onAction: string | undefined,
+    uploadData: string | undefined,
     part: number,
     total: number,
     fileName: string,
+    filePath: string,
     multiple: boolean,
     id: string,
     progressCb: (uploaded: number) => void
@@ -33,7 +37,11 @@ const uploadFile = (
     fdata.append("part", part.toString());
     fdata.append("total", total.toString());
     fdata.append("var_name", varName);
+    context && fdata.append("context", context);
+    onAction && fdata.append("on_action", onAction);
+    uploadData && fdata.append("upload_data", uploadData);
     fdata.append("multiple", multiple ? "True" : "False");
+    fdata.append("path", filePath)
     xhr.send(fdata);
 };
 
@@ -46,7 +54,15 @@ const getProgressCallback = (globalSize: number, offset: number) => (uploaded: n
         done: false,
     } as FileUploadReturn);
 
-const process = (files: FileList, uploadUrl: string, varName: string, id: string) => {
+const process = (
+    files: FileList,
+    uploadUrl: string,
+    varName: string,
+    context: string | undefined,
+    onAction: string | undefined,
+    uploadData: string | undefined,
+    id: string
+) => {
     if (files) {
         let globalSize = 0;
         for (let i = 0; i < files.length; i++) {
@@ -70,9 +86,13 @@ const process = (files: FileList, uploadUrl: string, varName: string, id: string
                     chunk,
                     uploadUrl,
                     varName,
+                    context,
+                    onAction,
+                    uploadData,
                     Math.floor(start / BYTES_PER_CHUNK),
                     tot,
                     blob.name,
+                    blob.webkitRelativePath,
                     i == 0 ? false : files.length > 0,
                     id,
                     progressCallback
@@ -82,8 +102,8 @@ const process = (files: FileList, uploadUrl: string, varName: string, id: string
 
                 start = end;
                 end = start + BYTES_PER_CHUNK;
-                uploadedFiles.push(blob.name);
             }
+            uploadedFiles.push(blob.name);
         }
         self.postMessage({
             progress: 100,
@@ -94,5 +114,5 @@ const process = (files: FileList, uploadUrl: string, varName: string, id: string
 };
 
 self.onmessage = (e: MessageEvent<FileUploadData>) => {
-    process(e.data.files, e.data.uploadUrl, e.data.varName, e.data.id);
+    process(e.data.files, e.data.uploadUrl, e.data.varName, e.data.context, e.data.onAction, e.data.uploadData, e.data.id);
 };

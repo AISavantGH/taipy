@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -38,20 +38,7 @@ def test__get_real_var_name(gui: Gui):
 def test__get_user_instance(gui: Gui):
     gui.run(run_server=False)
     with gui.get_flask_app().app_context():
-        with pytest.warns(UserWarning):
-            gui._get_user_instance("", type(None))
-
-
-def test__call_broadcast_callback(gui: Gui):
-    gui.run(run_server=False)
-    with gui.get_flask_app().app_context():
-        res = gui._call_broadcast_callback(lambda s, t: t, ["Hello World"], "mine")
-        assert res == "Hello World"
-
-    with gui.get_flask_app().app_context():
-        with pytest.warns(UserWarning):
-            res = gui._call_broadcast_callback(print, ["Hello World"], "mine")
-            assert res is None
+        gui._get_user_instance("", type(None))
 
 
 def test__refresh_expr(gui: Gui):
@@ -85,7 +72,7 @@ def test__chart_conf(gui: Gui):
 
         d = json.loads(res)
         assert isinstance(d, dict)
-        assert d["columns"]["col1"]["type"] == "int"
+        assert d["columns"][0]["col1"]["type"] == "int"
 
         res = gui._chart_conf(False, None, "", "")
         assert repr(res) == "Taipy: Do not update"
@@ -101,3 +88,24 @@ def test__get_valid_adapter_result(gui: Gui):
         res = gui._get_valid_adapter_result(("id", "label"))
         assert isinstance(res, tuple)
         assert res[0] == "id"
+
+def test_on_action_call(gui:Gui):
+    an_id = "my_id"
+
+    a_non_action_payload = {"a": "b"}
+    def on_action(state, id, payload):
+        assert id == an_id
+        assert payload is a_non_action_payload
+
+    an_action_payload = {"action": "on_an_action"}
+    def on_an_action(state, id, payload):
+        assert id == an_id
+        assert payload is an_action_payload
+
+    # set gui frame
+    gui._set_frame(inspect.currentframe())
+
+    gui.run(run_server=False)
+    with gui.get_flask_app().app_context():
+        gui._Gui__on_action(an_id, a_non_action_payload) # type: ignore[attr-defined]
+        gui._Gui__on_action(an_id, an_action_payload) # type: ignore[attr-defined]

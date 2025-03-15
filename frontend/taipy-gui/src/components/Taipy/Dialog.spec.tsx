@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -12,7 +12,7 @@
  */
 
 import React from "react";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import userEvent from "@testing-library/user-event";
 
@@ -28,8 +28,8 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 mockedAxios.get.mockRejectedValue("Network error: Something went wrong");
 mockedAxios.get.mockResolvedValue({ data: { jsx_no: '<div key="mock" data-testid="mocked"></div>' } });
 
-jest.mock("react-router-dom", () => ({
-    ...jest.requireActual("react-router-dom"),
+jest.mock("react-router", () => ({
+    ...jest.requireActual("react-router"),
     useLocation: () => ({
         pathname: "pathname",
     }),
@@ -241,5 +241,46 @@ describe("Dialog Component", () => {
             payload: { action: "testValidateAction", args: [2] },
             type: "SEND_ACTION_ACTION",
         });
+    });
+    it("should log an error when labels prop is not a valid JSON string", () => {
+        const consoleSpy = jest.spyOn(console, "info");
+        render(<Dialog title={"Dialog-Test-Title"} labels={"not a valid JSON string"} />);
+        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Error parsing dialog.labels"));
+    });
+    it("should apply width and height styles when they are provided", async () => {
+        const { findByRole } = render(<Dialog title="Dialog-Test-Title" width="500px" height="300px" open={true} />);
+        const dialogElement = await findByRole("dialog");
+        expect(dialogElement).toHaveStyle({ width: "500px", height: "300px" });
+    });
+    it("should not apply width and height styles when they are not provided", async () => {
+        const { findByRole } = render(<Dialog title="Dialog-Test-Title" open={true} />);
+        const dialogElement = await findByRole("dialog");
+        const computedStyles = window.getComputedStyle(dialogElement);
+        expect(computedStyles.width).not.toBe("500px");
+        expect(computedStyles.height).not.toBe("300px");
+    });
+    it("calls localAction prop when handleAction is triggered", async () => {
+        const localActionMock = jest.fn();
+        const { getByLabelText } = render(
+            <Dialog id="test-dialog" title="Test Dialog" localAction={localActionMock} open={true} />
+        );
+        const closeButton = getByLabelText("close");
+        await fireEvent.click(closeButton);
+        expect(localActionMock).toHaveBeenCalledWith(-1);
+    });
+    it("shows a popup", async () => {
+        const localActionMock = jest.fn();
+        const { getByText } = render(
+            <>
+                <Dialog id="test-dialog" title="" open={true} popup={true} localAction={localActionMock}>
+                    Hello
+                </Dialog>
+                <div>Outside</div>
+            </>
+        );
+        const Hello = getByText("Hello");
+        const Outside = getByText("Outside");
+        await userEvent.keyboard("{Escape}")
+        expect(localActionMock).toHaveBeenCalledWith(-1);
     });
 });

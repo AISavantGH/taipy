@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -14,47 +14,39 @@
 import React from "react";
 import { render } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { SnackbarProvider } from "notistack";
+import TaipyAlert from "./Alert";
 
-import Alert from "./Alert";
-import { AlertMessage } from "../../context/taipyReducers";
+describe("TaipyAlert Component", () => {
+    it("renders with default properties", () => {
+        const { getByRole } = render(<TaipyAlert message="Default Alert" />);
+        const alert = getByRole("alert");
+        expect(alert).toBeInTheDocument();
+        expect(alert).toHaveClass("MuiAlert-filledError");
+    });
 
-const defaultMessage = "message";
-const defaultAlerts: AlertMessage[] = [{ atype: "success", message: defaultMessage, system: true, duration: 3000 }];
-const getAlertsWithType = (aType: string) => [{...defaultAlerts[0], atype: aType}];
+    it("applies the correct severity", () => {
+        const { getByRole } = render(<TaipyAlert message="Warning Alert" severity="warning" />);
+        const alert = getByRole("alert");
+        expect(alert).toBeInTheDocument();
+        expect(alert).toHaveClass("MuiAlert-filledWarning");
+    });
 
-class myNotification {
-    static requestPermission = jest.fn();
-    static permission = "granted";
-}
+    it("applies the correct variant", () => {
+        const { getByRole } = render(<TaipyAlert message="Outlined Alert" variant="outlined" />);
+        const alert = getByRole("alert");
+        expect(alert).toBeInTheDocument();
+        expect(alert).toHaveClass("MuiAlert-outlinedError");
+    });
 
-describe("Alert Component", () => {
-    beforeAll(() => {
-        globalThis.Notification = myNotification as unknown as jest.Mocked<typeof Notification>;
+    it("does not render if render prop is false", () => {
+        const { queryByRole } = render(<TaipyAlert message="Hidden Alert" render={false} />);
+        const alert = queryByRole("alert");
+        expect(alert).toBeNull();
     });
-    it("renders", async () => {
-        const { getByText } = render(<SnackbarProvider><Alert alerts={defaultAlerts} /></SnackbarProvider>);
-        const elt = getByText(defaultMessage);
-        expect(elt.tagName).toBe("DIV");
-    });
-    it("displays a success alert", async () => {
-        const { getByText } = render(<SnackbarProvider><Alert alerts={defaultAlerts} /></SnackbarProvider>);
-        const elt = getByText(defaultMessage);
-        expect(elt.closest(".notistack-MuiContent-success")).toBeInTheDocument()
-    });
-    it("displays an error alert", async () => {
-        const { getByText } = render(<SnackbarProvider><Alert alerts={getAlertsWithType("error")} /></SnackbarProvider>);
-        const elt = getByText(defaultMessage);
-        expect(elt.closest(".notistack-MuiContent-error")).toBeInTheDocument()
-    });
-    it("displays a warning alert", async () => {
-        const { getByText } = render(<SnackbarProvider><Alert alerts={getAlertsWithType("warning")} /></SnackbarProvider>);
-        const elt = getByText(defaultMessage);
-        expect(elt.closest(".notistack-MuiContent-warning")).toBeInTheDocument()
-    });
-    it("displays an info alert", async () => {
-        const { getByText } = render(<SnackbarProvider><Alert alerts={getAlertsWithType("info")} /></SnackbarProvider>);
-        const elt = getByText(defaultMessage);
-        expect(elt.closest(".notistack-MuiContent-info")).toBeInTheDocument()
+
+    it("handles dynamic class names", () => {
+        const { getByRole } = render(<TaipyAlert message="Dynamic Alert" className="custom-class" />);
+        const alert = getByRole("alert");
+        expect(alert).toHaveClass("custom-class");
     });
 });

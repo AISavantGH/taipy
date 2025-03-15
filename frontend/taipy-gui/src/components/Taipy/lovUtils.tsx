@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -30,8 +30,6 @@ export interface SelTreeProps extends LovProps, TaipyLabelProps {
     filter?: boolean;
     multiple?: boolean;
     width?: string | number;
-    dropdown?: boolean;
-    mode?: string;
 }
 
 export interface LovProps<T = string | string[], U = string> extends TaipyActiveProps, TaipyChangeProps {
@@ -93,7 +91,7 @@ export const useLovListMemo = (lov: LoV | undefined, defaultLov: string, tree = 
             let parsedLov;
             try {
                 parsedLov = JSON.parse(defaultLov);
-            } catch (e) {
+            } catch {
                 parsedLov = [];
             }
             return parsedLov.map((elt: LoVElt) => getLovItem(elt, tree));
@@ -112,7 +110,7 @@ export const LovImage = ({
     item: Icon;
     disableTypo?: boolean;
     height?: string;
-    titleTypographyProps?: TypographyProps<"span", { component?: "span"; }>;
+    titleTypographyProps?: TypographyProps<"span", { component?: "span" }>;
 }) => {
     const sx = useMemo(
         () => (height ? { height: height, "& .MuiAvatar-img": { objectFit: "contain" } } : undefined) as SxProps,
@@ -121,9 +119,7 @@ export const LovImage = ({
     return (
         <CardHeader
             sx={cardSx}
-            avatar={
-                <IconAvatar img={item} sx={sx} />
-            }
+            avatar={<IconAvatar img={item} sx={sx} />}
             title={item.text}
             disableTypography={disableTypo}
             titleTypographyProps={titleTypographyProps}
@@ -147,7 +143,7 @@ export interface ItemProps {
     item: stringIcon;
     disabled: boolean;
     withAvatar?: boolean;
-    titleTypographyProps?: TypographyProps<"span", { component?: "span"; }>;
+    titleTypographyProps?: TypographyProps<"span", { component?: "span" }>;
 }
 
 export const SingleItem = ({

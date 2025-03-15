@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -143,17 +143,17 @@ def test_map_md(gui: Gui, helpers):
     marker = {"color": "fuchsia", "size": 4}  # noqa: F841
     layout = {  # noqa: F841
         "dragmode": "zoom",
-        "mapbox": {"style": "open-street-map", "center": {"lat": 38, "lon": -90}, "zoom": 3},
+        "map": {"style": "open-street-map", "center": {"lat": 38, "lon": -90}, "zoom": 3},
         "margin": {"r": 0, "t": 0, "b": 0, "l": 0},
     }
-    md = "<|{mapData}|chart|type=scattermapbox|marker={marker}|layout={layout}|lat=Lat|lon=Lon|text=Globvalue|mode=markers|>"  # noqa: E501
+    md = "<|{mapData}|chart|type=scattermap|marker={marker}|layout={layout}|lat=Lat|lon=Lon|text=Globvalue|mode=markers|>"  # noqa: E501
     gui._set_frame(inspect.currentframe())
     expected_list = [
         "<Chart",
-        "&quot;Lat&quot;: &#x7B;&quot;index&quot;:",
-        "&quot;Lon&quot;: &#x7B;&quot;index&quot;:",
+        "&quot;Lat&quot;: &#x7B;&quot;",
+        "&quot;Lon&quot;: &#x7B;&quot;",
         "data={_TpD_tpec_TpExPr_mapData_TPMDL_0}",
-        'defaultLayout="{&quot;dragmode&quot;: &quot;zoom&quot;, &quot;mapbox&quot;: &#x7B;&quot;style&quot;: &quot;open-street-map&quot;, &quot;center&quot;: &#x7B;&quot;lat&quot;: 38, &quot;lon&quot;: -90&#x7D;, &quot;zoom&quot;: 3&#x7D;, &quot;margin&quot;: &#x7B;&quot;r&quot;: 0, &quot;t&quot;: 0, &quot;b&quot;: 0, &quot;l&quot;: 0&#x7D;}"',  # noqa: E501
+        'defaultLayout="{&quot;dragmode&quot;: &quot;zoom&quot;, &quot;map&quot;: &#x7B;&quot;style&quot;: &quot;open-street-map&quot;, &quot;center&quot;: &#x7B;&quot;lat&quot;: 38, &quot;lon&quot;: -90&#x7D;, &quot;zoom&quot;: 3&#x7D;, &quot;margin&quot;: &#x7B;&quot;r&quot;: 0, &quot;t&quot;: 0, &quot;b&quot;: 0, &quot;l&quot;: 0&#x7D;}"',  # noqa: E501
         'updateVarName="_TpD_tpec_TpExPr_mapData_TPMDL_0"',
     ]
     helpers.test_control_md(gui, md, expected_list)
@@ -218,3 +218,15 @@ def test_chart_indexed_properties_with_arrays(gui: Gui, helpers):
         "&quot;lines&quot;: [null, &#x7B;&quot;dash&quot;: &quot;dashdot&quot;&#x7D;, &#x7B;&quot;dash&quot;: &quot;dash&quot;&#x7D;, null, &#x7B;&quot;dash&quot;: &quot;dashdot&quot;&#x7D;, &#x7B;&quot;dash&quot;: &quot;dash&quot;&#x7D;]",  # noqa: E501
     ]
     helpers.test_control_md(gui, md, expected_list)
+
+def test_chart_multi_data(gui: Gui, helpers, csvdata):
+    md_string = "<|{csvdata}|chart|x=Day|y=Daily hospital occupancy|data[1]={csvdata}|>"
+    expected_list = [
+        "<Chart",
+        'updateVarName="_TpD_tpec_TpExPr_csvdata_TPMDL_0"',
+        'dataVarNames="_TpD_tpec_TpExPr_csvdata_TPMDL_0"',
+        "data={_TpD_tpec_TpExPr_csvdata_TPMDL_0}",
+        "data1={_TpD_tpec_TpExPr_csvdata_TPMDL_0}",
+    ]
+    gui._set_frame(inspect.currentframe())
+    helpers.test_control_md(gui, md_string, expected_list)

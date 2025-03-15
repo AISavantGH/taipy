@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,18 +11,22 @@
 
 import json
 from copy import copy
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from taipy.config._config import _Config
-from taipy.config.common._config_blocker import _ConfigBlocker
-from taipy.config.common._template_handler import _TemplateHandler as _tpl
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
-from taipy.config.section import Section
+import numpy
+import pandas
 
+from taipy.common.config import Config
+from taipy.common.config._config import _Config
+from taipy.common.config.common._config_blocker import _ConfigBlocker
+from taipy.common.config.common._template_handler import _TemplateHandler as _tpl
+from taipy.common.config.section import Section
+
+from ..common._utils import _normalize_path
 from ..common._warnings import _warn_deprecated
 from ..common.mongo_default_document import MongoDefaultDocument
+from ..common.scope import Scope
 
 
 class DataNodeConfig(Section):
@@ -33,19 +37,11 @@ class DataNodeConfig(Section):
     needed to create an actual data node.
 
     Attributes:
-        id (str): Unique identifier of the data node config. It must be a valid Python variable name.
-        storage_type (str): Storage type of the data nodes created from the data node config. The possible values
-            are : "csv", "excel", "pickle", "sql_table", "sql", "mongo_collection", "generic", "json", "parquet",
-            "in_memory and "s3_object".
-            The default value is "pickle".
-            Note that the "in_memory" value can only be used when `JobConfig^` mode is "development".
-        scope (Optional[Scope^]): The optional `Scope^` of the data nodes instantiated from the data node config.
-            The default value is SCENARIO.
         **properties (dict[str, any]): A dictionary of additional properties.
     """
 
     name = "DATA_NODE"
-
+    _ALL_TYPES = (str, int, float, bool, list, dict, tuple, set, type(None), type(callable), datetime, timedelta)
     _STORAGE_TYPE_KEY = "storage_type"
     _STORAGE_TYPE_VALUE_PICKLE = "pickle"
     _STORAGE_TYPE_VALUE_SQL_TABLE = "sql_table"
@@ -78,11 +74,15 @@ class DataNodeConfig(Section):
     _EXPOSED_TYPE_PANDAS = "pandas"
     _EXPOSED_TYPE_MODIN = "modin"  # Deprecated in favor of pandas since 3.1.0
     _EXPOSED_TYPE_NUMPY = "numpy"
+    _EXPOSED_TYPE_PANDAS_DATAFRAME = pandas.DataFrame
+    _EXPOSED_TYPE_NUMPY_NDARRAY = numpy.ndarray
     _DEFAULT_EXPOSED_TYPE = _EXPOSED_TYPE_PANDAS
 
     _ALL_EXPOSED_TYPES = [
         _EXPOSED_TYPE_PANDAS,
         _EXPOSED_TYPE_NUMPY,
+        _EXPOSED_TYPE_PANDAS_DATAFRAME,
+        _EXPOSED_TYPE_NUMPY_NDARRAY,
     ]
 
     _OPTIONAL_ENCODING_PROPERTY = "encoding"
@@ -153,7 +153,102 @@ class DataNodeConfig(Section):
     _REQUIRED_AWS_STORAGE_BUCKET_NAME_PROPERTY = "aws_s3_bucket_name"
     _REQUIRED_AWS_S3_OBJECT_KEY_PROPERTY = "aws_s3_object_key"
     _OPTIONAL_AWS_REGION_PROPERTY = "aws_region"
-    _OPTIONAL_AWS_S3_OBJECT_PARAMETERS_PROPERTY = "aws_s3_object_parameters"
+    _OPTIONAL_AWS_S3_CLIENT_PARAMETERS_PROPERTY = "aws_s3_client_parameters"
+    _OPTIONAL_AWS_S3_GET_OBJECT_PARAMETERS_PROPERTY = "aws_s3_get_object_parameters"
+    _OPTIONAL_AWS_S3_PUT_OBJECT_PARAMETERS_PROPERTY = "aws_s3_put_object_parameters"
+
+    _PROPERTIES_TYPES: Dict[str, Dict[str, Any]] = {
+        _STORAGE_TYPE_VALUE_GENERIC: {
+            _OPTIONAL_READ_FUNCTION_GENERIC_PROPERTY: Callable,
+            _OPTIONAL_WRITE_FUNCTION_GENERIC_PROPERTY: Callable,
+            _OPTIONAL_READ_FUNCTION_ARGS_GENERIC_PROPERTY: list,
+            _OPTIONAL_WRITE_FUNCTION_ARGS_GENERIC_PROPERTY: list,
+        },
+        _STORAGE_TYPE_VALUE_SQL: {
+            _REQUIRED_DB_NAME_SQL_PROPERTY: str,
+            _REQUIRED_DB_ENGINE_SQL_PROPERTY: str,
+            _REQUIRED_READ_QUERY_SQL_PROPERTY: str,
+            _REQUIRED_WRITE_QUERY_BUILDER_SQL_PROPERTY: Callable,
+            _OPTIONAL_APPEND_QUERY_BUILDER_SQL_PROPERTY: Callable,
+            _OPTIONAL_DB_USERNAME_SQL_PROPERTY: str,
+            _OPTIONAL_DB_PASSWORD_SQL_PROPERTY: str,
+            _OPTIONAL_HOST_SQL_PROPERTY: str,
+            _OPTIONAL_PORT_SQL_PROPERTY: int,
+            _OPTIONAL_DRIVER_SQL_PROPERTY: str,
+            _OPTIONAL_FOLDER_PATH_SQLITE_PROPERTY: str,
+            _OPTIONAL_FILE_EXTENSION_SQLITE_PROPERTY: str,
+            _OPTIONAL_DB_EXTRA_ARGS_SQL_PROPERTY: dict,
+            _OPTIONAL_EXPOSED_TYPE_SQL_PROPERTY: (str, Callable),
+        },
+        _STORAGE_TYPE_VALUE_SQL_TABLE: {
+            _REQUIRED_DB_NAME_SQL_PROPERTY: str,
+            _REQUIRED_DB_ENGINE_SQL_PROPERTY: str,
+            _REQUIRED_TABLE_NAME_SQL_TABLE_PROPERTY: str,
+            _OPTIONAL_DB_USERNAME_SQL_PROPERTY: str,
+            _OPTIONAL_DB_PASSWORD_SQL_PROPERTY: str,
+            _OPTIONAL_HOST_SQL_PROPERTY: str,
+            _OPTIONAL_PORT_SQL_PROPERTY: int,
+            _OPTIONAL_DRIVER_SQL_PROPERTY: str,
+            _OPTIONAL_FOLDER_PATH_SQLITE_PROPERTY: str,
+            _OPTIONAL_FILE_EXTENSION_SQLITE_PROPERTY: str,
+            _OPTIONAL_DB_EXTRA_ARGS_SQL_PROPERTY: dict,
+            _OPTIONAL_EXPOSED_TYPE_SQL_PROPERTY: (str, Callable),
+        },
+        _STORAGE_TYPE_VALUE_CSV: {
+            _OPTIONAL_DEFAULT_PATH_CSV_PROPERTY: str,
+            _OPTIONAL_ENCODING_PROPERTY: str,
+            _OPTIONAL_HAS_HEADER_CSV_PROPERTY: bool,
+            _OPTIONAL_EXPOSED_TYPE_CSV_PROPERTY: (str, Callable),
+        },
+        _STORAGE_TYPE_VALUE_EXCEL: {
+            _OPTIONAL_DEFAULT_PATH_EXCEL_PROPERTY: str,
+            _OPTIONAL_HAS_HEADER_EXCEL_PROPERTY: bool,
+            _OPTIONAL_SHEET_NAME_EXCEL_PROPERTY: (str, list),
+            _OPTIONAL_EXPOSED_TYPE_EXCEL_PROPERTY: (str, Callable),
+        },
+        _STORAGE_TYPE_VALUE_IN_MEMORY: {
+            _OPTIONAL_DEFAULT_DATA_IN_MEMORY_PROPERTY: _ALL_TYPES,
+        },
+        _STORAGE_TYPE_VALUE_PICKLE: {
+            _OPTIONAL_DEFAULT_PATH_PICKLE_PROPERTY: str,
+            _OPTIONAL_DEFAULT_DATA_PICKLE_PROPERTY: _ALL_TYPES,
+        },
+        _STORAGE_TYPE_VALUE_JSON: {
+            _OPTIONAL_DEFAULT_PATH_JSON_PROPERTY: str,
+            _OPTIONAL_ENCODING_PROPERTY: str,
+            _OPTIONAL_ENCODER_JSON_PROPERTY: json.JSONEncoder,
+            _OPTIONAL_DECODER_JSON_PROPERTY: json.JSONDecoder,
+        },
+        _STORAGE_TYPE_VALUE_PARQUET: {
+            _OPTIONAL_DEFAULT_PATH_PARQUET_PROPERTY: str,
+            _OPTIONAL_ENGINE_PARQUET_PROPERTY: str,
+            _OPTIONAL_COMPRESSION_PARQUET_PROPERTY: str,
+            _OPTIONAL_READ_KWARGS_PARQUET_PROPERTY: dict,
+            _OPTIONAL_WRITE_KWARGS_PARQUET_PROPERTY: dict,
+            _OPTIONAL_EXPOSED_TYPE_PARQUET_PROPERTY: (str, Callable),
+        },
+        _STORAGE_TYPE_VALUE_MONGO_COLLECTION: {
+            _REQUIRED_DB_NAME_MONGO_PROPERTY: str,
+            _REQUIRED_COLLECTION_NAME_MONGO_PROPERTY: str,
+            _OPTIONAL_CUSTOM_DOCUMENT_MONGO_PROPERTY: str,
+            _OPTIONAL_USERNAME_MONGO_PROPERTY: str,
+            _OPTIONAL_PASSWORD_MONGO_PROPERTY: str,
+            _OPTIONAL_HOST_MONGO_PROPERTY: str,
+            _OPTIONAL_PORT_MONGO_PROPERTY: int,
+            _OPTIONAL_DRIVER_MONGO_PROPERTY: str,
+            _OPTIONAL_DB_EXTRA_ARGS_MONGO_PROPERTY: dict,
+        },
+        _STORAGE_TYPE_VALUE_S3_OBJECT: {
+            _REQUIRED_AWS_ACCESS_KEY_ID_PROPERTY: str,
+            _REQUIRED_AWS_SECRET_ACCESS_KEY_PROPERTY: str,
+            _REQUIRED_AWS_STORAGE_BUCKET_NAME_PROPERTY: str,
+            _REQUIRED_AWS_S3_OBJECT_KEY_PROPERTY: str,
+            _OPTIONAL_AWS_REGION_PROPERTY: str,
+            _OPTIONAL_AWS_S3_CLIENT_PARAMETERS_PROPERTY: dict,
+            _OPTIONAL_AWS_S3_GET_OBJECT_PARAMETERS_PROPERTY: dict,
+            _OPTIONAL_AWS_S3_PUT_OBJECT_PARAMETERS_PROPERTY: dict,
+        },
+    }
 
     _REQUIRED_PROPERTIES: Dict[str, List] = {
         _STORAGE_TYPE_VALUE_PICKLE: [],
@@ -258,7 +353,9 @@ class DataNodeConfig(Section):
         },
         _STORAGE_TYPE_VALUE_S3_OBJECT: {
             _OPTIONAL_AWS_REGION_PROPERTY: None,
-            _OPTIONAL_AWS_S3_OBJECT_PARAMETERS_PROPERTY: None,
+            _OPTIONAL_AWS_S3_CLIENT_PARAMETERS_PROPERTY: None,
+            _OPTIONAL_AWS_S3_GET_OBJECT_PARAMETERS_PROPERTY: None,
+            _OPTIONAL_AWS_S3_PUT_OBJECT_PARAMETERS_PROPERTY: None,
         },
     }
 
@@ -279,6 +376,8 @@ class DataNodeConfig(Section):
         self._storage_type = storage_type
         self._scope = scope
         self._validity_period = validity_period
+        if "path" in properties:
+            properties["path"] = _normalize_path(properties["path"])
         super().__init__(id, **properties)
 
         # modin exposed type is deprecated since taipy 3.1.0
@@ -289,6 +388,7 @@ class DataNodeConfig(Section):
                 suggest="exposed_type='pandas'",
             )
             properties["exposed_type"] = DataNodeConfig._EXPOSED_TYPE_PANDAS
+        self._ranks: Dict[str, int] = {}
 
     def __copy__(self):
         return DataNodeConfig(self.id, self._storage_type, self._scope, self._validity_period, **copy(self._properties))
@@ -297,46 +397,59 @@ class DataNodeConfig(Section):
         return _tpl._replace_templates(self._properties.get(item))
 
     @property
-    def storage_type(self):
+    def storage_type(self) -> str:
+        """Storage type of the data nodes created from the data node config.
+
+        The possible values are : "csv", "excel", "pickle", "sql_table", "sql",
+        "mongo_collection", "generic", "json", "parquet", "in_memory and "s3_object".
+
+        The default value is "pickle".
+
+        Note that the "in_memory" value can only be used when `JobConfig^` mode is "development".
+        """
         return _tpl._replace_templates(self._storage_type)
 
     @storage_type.setter  # type: ignore
     @_ConfigBlocker._check()
-    def storage_type(self, val):
+    def storage_type(self, val) -> None:
         self._storage_type = val
 
     @property
-    def scope(self):
+    def scope(self) -> Scope:
+        """The `Scope^` of the data nodes instantiated from the data node config."""
         return _tpl._replace_templates(self._scope)
 
     @scope.setter  # type: ignore
     @_ConfigBlocker._check()
-    def scope(self, val):
+    def scope(self, val) -> None:
         self._scope = val
 
     @property
-    def validity_period(self):
+    def validity_period(self) -> Optional[timedelta]:
+        """The validity period of the data nodes instantiated from the data node config.
+
+        It corresponds to the duration since the last edit date for which the data node
+        can be considered valid. Once the validity period has passed, the data node is
+        considered stale and relevant tasks that are submitted will run even if they are
+        skippable.
+
+        If the validity period is set to None (the default value), the data node is always
+        up-to-date.
+        """
         return _tpl._replace_templates(self._validity_period)
 
     @validity_period.setter  # type: ignore
     @_ConfigBlocker._check()
-    def validity_period(self, val):
+    def validity_period(self, val) -> None:
         self._validity_period = val
 
-    @property
-    def cacheable(self):
-        _warn_deprecated("cacheable", suggest="the skippable feature")
-        cacheable = self._properties.get("cacheable")
-        return _tpl._replace_templates(cacheable) if cacheable is not None else False
-
-    @cacheable.setter  # type: ignore
-    @_ConfigBlocker._check()
-    def cacheable(self, val):
-        _warn_deprecated("cacheable", suggest="the skippable feature")
-        self._properties["cacheable"] = val
-
     @classmethod
-    def default_config(cls):
+    def default_config(cls) -> "DataNodeConfig":
+        """Get a data node configuration with all the default values.
+
+        Returns:
+            The default data node configuration.
+        """
         return DataNodeConfig(
             cls._DEFAULT_KEY, cls._DEFAULT_STORAGE_TYPE, cls._DEFAULT_SCOPE, cls._DEFAULT_VALIDITY_PERIOD
         )
@@ -393,6 +506,10 @@ class DataNodeConfig(Section):
                     self._properties[optional_property] = default_value
 
     @staticmethod
+    def _types_to_register() -> List[type]:
+        return [Scope]
+
+    @staticmethod
     def _set_default_configuration(
         storage_type: str, scope: Optional[Scope] = None, validity_period: Optional[timedelta] = None, **properties
     ) -> "DataNodeConfig":
@@ -402,7 +519,7 @@ class DataNodeConfig(Section):
         where all data node configuration objects will find their default
         values when needed.
 
-        Parameters:
+        Arguments:
             storage_type (str): The default storage type for all data node configurations.
                 The possible values are *"pickle"* (the default value), *"csv"*, *"excel"*,
                 *"sql"*, *"mongo_collection"*, *"in_memory"*, *"json"*, *"parquet"*, *"generic"*,
@@ -411,14 +528,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The default data node configuration.
-        """
+        """  # noqa: E501
         section = DataNodeConfig(_Config.DEFAULT_KEY, storage_type, scope, validity_period, **properties)
         Config._register_default(section)
         return Config.sections[DataNodeConfig.name][_Config.DEFAULT_KEY]
@@ -432,7 +550,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new data node configuration from an existing one.
 
-        Parameters:
+        Arguments:
             source_configuration (DataNodeConfig): The source data node configuration.
             id (str): The unique identifier of the new data node configuration.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.<br/>
@@ -458,7 +576,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new data node configuration.
             storage_type (Optional[str]): The data node configuration storage type. The possible values
                 are None (which is the default value of *"pickle"*, unless it has been overloaded by the
@@ -471,14 +589,15 @@ class DataNodeConfig(Section):
                 `(Config.)set_default_data_node_configuration()^`).
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new data node configuration.
-        """
+        """  # noqa: E501
         configuration_map: Dict[str, Callable] = {
             cls._STORAGE_TYPE_VALUE_PICKLE: cls._configure_pickle,
             cls._STORAGE_TYPE_VALUE_SQL_TABLE: cls._configure_sql_table,
@@ -512,7 +631,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new CSV data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new CSV data node configuration.
             default_path (Optional[str]): The default path of the CSV file.
             encoding (Optional[str]): The encoding of the CSV file.
@@ -523,14 +642,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new CSV data node configuration.
-        """
+        """  # noqa: E501
         if default_path is not None:
             properties[cls._OPTIONAL_DEFAULT_PATH_CSV_PROPERTY] = default_path
         if encoding is not None:
@@ -556,7 +676,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new JSON data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new JSON data node configuration.
             default_path (Optional[str]): The default path of the JSON file.
             encoding (Optional[str]): The encoding of the JSON file.
@@ -566,13 +686,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
+
         Returns:
             The new JSON data node configuration.
-        """
+        """  # noqa: E501
         if default_path is not None:
             properties[cls._OPTIONAL_DEFAULT_PATH_JSON_PROPERTY] = default_path
         if encoding is not None:
@@ -600,7 +722,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new Parquet data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new Parquet data node configuration.
             default_path (Optional[str]): The default path of the Parquet file.
             engine (Optional[str]): Parquet library to use. Possible values are *"fastparquet"* or
@@ -620,14 +742,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new Parquet data node configuration.
-        """
+        """  # noqa: E501
         if default_path is not None:
             properties[cls._OPTIONAL_DEFAULT_PATH_PARQUET_PROPERTY] = default_path
         if engine is not None:
@@ -649,7 +772,7 @@ class DataNodeConfig(Section):
         id: str,
         default_path: Optional[str] = None,
         has_header: Optional[bool] = None,
-        sheet_name: Optional[Union[List[str], str]] = None,
+        sheet_name: Union[List[str], str, None] = None,
         exposed_type: Optional[str] = None,
         scope: Optional[Scope] = None,
         validity_period: Optional[timedelta] = None,
@@ -657,11 +780,11 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new Excel data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new Excel data node configuration.
             default_path (Optional[str]): The path of the Excel file.
             has_header (Optional[bool]): If True, indicates that the Excel file has a header.
-            sheet_name (Optional[Union[List[str], str]]): The list of sheet names to be used.
+            sheet_name (Union[List[str], str]): The list of sheet names to be used.
                 This can be a unique name.
             exposed_type (Optional[str]): The exposed type of the data read from Excel file.<br/>
                 The default value is `pandas`.
@@ -669,14 +792,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new Excel data node configuration.
-        """
+        """  # noqa: E501
         if default_path is not None:
             properties[cls._OPTIONAL_DEFAULT_PATH_EXCEL_PROPERTY] = default_path
         if has_header is not None:
@@ -702,7 +826,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new generic data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new generic data node configuration.
             read_fct (Optional[Callable]): The Python function called to read the data.
             write_fct (Optional[Callable]): The Python function called to write the data.
@@ -715,13 +839,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
+
         Returns:
             The new Generic data node configuration.
-        """
+        """  # noqa: E501
         if read_fct is not None:
             properties[cls._OPTIONAL_READ_FUNCTION_GENERIC_PROPERTY] = read_fct
         if write_fct is not None:
@@ -744,22 +870,25 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new *in-memory* data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new in_memory data node configuration.
             default_data (Optional[any]): The default data of the data nodes instantiated from
                 this in_memory data node configuration.
+                If provided, note that the default_data will be stored as a configuration attribute.
+                So it is designed to handle small data values like parameters, and it must be Json serializable.
             scope (Optional[Scope^]): The scope of the in_memory data node configuration.<br/>
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new *in-memory* data node configuration.
-        """
+        """  # noqa: E501
         if default_data is not None:
             properties[cls._OPTIONAL_DEFAULT_DATA_IN_MEMORY_PROPERTY] = default_data
 
@@ -777,23 +906,26 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new pickle data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new pickle data node configuration.
             default_path (Optional[str]): The path of the pickle file.
             default_data (Optional[any]): The default data of the data nodes instantiated from
                 this pickle data node configuration.
+                If provided, note that the default_data will be stored as a configuration attribute.
+                So it is designed to handle small data values like parameters, and it must be Json serializable.
             scope (Optional[Scope^]): The scope of the pickle data node configuration.<br/>
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new pickle data node configuration.
-        """
+        """  # noqa: E501
         if default_path is not None:
             properties[cls._OPTIONAL_DEFAULT_PATH_PICKLE_PROPERTY] = default_path
         if default_data is not None:
@@ -823,7 +955,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new SQL table data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new SQL data node configuration.
             db_name (str): The database name, or the name of the SQLite database file.
             db_engine (str): The database engine. Possible values are *"sqlite"*, *"mssql"*, *"mysql"*,
@@ -850,14 +982,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new SQL data node configuration.
-        """
+        """  # noqa: E501
         properties.update(
             {
                 cls._REQUIRED_DB_NAME_SQL_PROPERTY: db_name,
@@ -911,7 +1044,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new SQL data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new SQL data node configuration.
             db_name (str): The database name, or the name of the SQLite database file.
             db_engine (str): The database engine. Possible values are *"sqlite"*, *"mssql"*, *"mysql"*,
@@ -942,13 +1075,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
+
         Returns:
             The new SQL data node configuration.
-        """
+        """  # noqa: E501
         properties.update(
             {
                 cls._REQUIRED_DB_NAME_SQL_PROPERTY: db_name,
@@ -1000,7 +1135,7 @@ class DataNodeConfig(Section):
     ) -> "DataNodeConfig":
         """Configure a new Mongo collection data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new Mongo collection data node configuration.
             db_name (str): The database name.
             collection_name (str): The collection in the database to read from and to write the data to.
@@ -1022,14 +1157,15 @@ class DataNodeConfig(Section):
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new Mongo collection data node configuration.
-        """
+        """  # noqa: E501
         properties.update(
             {
                 cls._REQUIRED_DB_NAME_MONGO_PROPERTY: db_name,
@@ -1065,34 +1201,53 @@ class DataNodeConfig(Section):
         aws_s3_bucket_name: str,
         aws_s3_object_key: str,
         aws_region: Optional[str] = None,
-        aws_s3_object_parameters: Optional[Dict[str, Any]] = None,
+        aws_s3_client_parameters: Optional[Dict[str, Any]] = None,
+        aws_s3_get_object_parameters: Optional[Dict[str, Any]] = None,
+        aws_s3_put_object_parameters: Optional[Dict[str, Any]] = None,
         scope: Optional[Scope] = None,
         validity_period: Optional[timedelta] = None,
         **properties,
     ) -> "DataNodeConfig":
         """Configure a new S3 object data node configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of the new S3 Object data node configuration.
-            aws_access_key (str): Amazon Web Services ID for to identify account.
-            aws_secret_access_key (str): Amazon Web Services access key to authenticate programmatic requests.
-            aws_s3_bucket_name (str): The bucket in S3 to read from and to write the data to.
+            aws_access_key (str): Amazon Web Services (AWS) ID for to identify account.
+            aws_secret_access_key (str): Amazon Web Services (AWS) access key to authenticate
+                programmatic requests.
+            aws_s3_bucket_name (str): The Amazon Web Services (AWS) S3 bucket to read from and
+                to write the data to.
+            aws_s3_object_key (str): The Amazon Web Services (AWS) S3 object key to read
+                or write.
             aws_region (Optional[str]): Self-contained geographic area where Amazon Web Services (AWS)
                 infrastructure is located.
-            aws_s3_object_parameters (Optional[dict[str, any]]): A dictionary of additional arguments to be passed
-                into AWS S3 bucket access string.
+            aws_s3_client_parameters (Optional[dict]): Additional parameters for advanced use
+                cases to be passed to the Amazon Web Services (AWS) S3 client.<br/>
+                Each parameter key must match the name of a parameter of the
+                `boto3.session.Session.client` API.
+            aws_s3_get_object_parameters (Optional[dict]): Additional parameters to be
+                passed to the Amazon Web Services (AWS) S3 client get function for
+                advanced reading use cases. <br/>
+                Each parameter key must match the name of a parameter of the
+                `boto3.client.get_object` API.
+            aws_s3_put_object_parameters (Optional[dict]): Additional parameters to be
+                passed to the Amazon Web Services (AWS) S3 client put function for
+                advanced writing use cases. <br/>
+                Each parameter key must match the name of a parameter of the
+                `boto3.client.put_object` API.
             scope (Optional[Scope^]): The scope of the S3 Object data node configuration.<br/>
                 The default value is `Scope.SCENARIO`.
             validity_period (Optional[timedelta]): The duration since the last edit date for which the data node can be
                 considered up-to-date. Once the validity period has passed, the data node is considered stale and
-                relevant tasks will run even if they are skippable (see the
-                [Task configs page](../core/config/task-config.md) for more details).
+                relevant tasks will run even if they are skippable (see the Task configuration
+                [page](../../../../../../userman/scenario_features/task-orchestration/scenario-config.md#from-task-configurations)
+                for more details).
                 If *validity_period* is set to None, the data node is always up-to-date.
             **properties (dict[str, any]): A keyworded variable length list of additional arguments.
 
         Returns:
             The new S3 object data node configuration.
-        """
+        """  # noqa: E501
         properties.update(
             {
                 cls._REQUIRED_AWS_ACCESS_KEY_ID_PROPERTY: aws_access_key,
@@ -1104,8 +1259,12 @@ class DataNodeConfig(Section):
 
         if aws_region is not None:
             properties[cls._OPTIONAL_AWS_REGION_PROPERTY] = aws_region
-        if aws_s3_object_parameters is not None:
-            properties[cls._OPTIONAL_AWS_S3_OBJECT_PARAMETERS_PROPERTY] = aws_s3_object_parameters
+        if aws_s3_client_parameters is not None:
+            properties[cls._OPTIONAL_AWS_S3_CLIENT_PARAMETERS_PROPERTY] = aws_s3_client_parameters
+        if aws_s3_get_object_parameters is not None:
+            properties[cls._OPTIONAL_AWS_S3_GET_OBJECT_PARAMETERS_PROPERTY] = aws_s3_get_object_parameters
+        if aws_s3_put_object_parameters is not None:
+            properties[cls._OPTIONAL_AWS_S3_PUT_OBJECT_PARAMETERS_PROPERTY] = aws_s3_put_object_parameters
 
         return cls.__configure(id, DataNodeConfig._STORAGE_TYPE_VALUE_S3_OBJECT, scope, validity_period, **properties)
 

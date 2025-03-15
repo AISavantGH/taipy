@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,18 +13,19 @@ from typing import List, Optional
 
 
 class ConfigCoreVersionMismatched(Exception):
-    """Raised if core version in Config does not match with the version of Taipy Core."""
+    """Raised if the version in Config does not match with the version of Taipy Version management."""
 
     def __init__(self, config_core_version: str, core_version: str) -> None:
         self.message = (
-            f"The version {config_core_version} of Core's entities does not match version of Taipy Core {core_version}."
+            f"The version {config_core_version} of Taipy's entities does not match version of the Taipy"
+            f" Version management {core_version}."
             f" Please update the core entities to be compatible with Taipy Core {core_version}"
             " using the `taipy migrate ...` command. For more information, please run `taipy help migrate`"
         )
 
 
-class CoreServiceIsAlreadyRunning(Exception):
-    """Raised if the Core service is already running."""
+class OrchestratorServiceIsAlreadyRunning(Exception):
+    """Raised if the Orchestrator service is already running."""
 
 
 class CycleAlreadyExists(Exception):
@@ -40,6 +41,10 @@ class NonExistingCycle(Exception):
 
 class MissingRequiredProperty(Exception):
     """Raised if a required property is missing when creating a Data Node."""
+
+
+class WrongDataNodeType(Exception):
+    """Raised if a data node storage type is incorrect."""
 
 
 class InvalidDataNodeType(Exception):
@@ -261,7 +266,7 @@ class NonExistingScenarioConfig(Exception):
         self.message = f"Scenario config: {scenario_config_id} does not exist."
 
 
-class InvalidSscenario(Exception):
+class InvalidScenario(Exception):
     """Raised if a Scenario is not a Directed Acyclic Graph."""
 
     def __init__(self, scenario_id: str):
@@ -339,10 +344,6 @@ class ModeNotAvailable(Exception):
     """Raised if the mode in JobConfig is not supported."""
 
 
-class InvalidExportPath(Exception):
-    """Raised if the export path is not valid."""
-
-
 class NonExistingVersion(Exception):
     """Raised if request a Version that is not known by the Version Manager."""
 
@@ -350,8 +351,12 @@ class NonExistingVersion(Exception):
         self.message = f"Version '{version_number}' does not exist."
 
 
-class VersionIsNotProductionVersion(Exception):
-    """Raised if the version is not a production version."""
+class VersionAlreadyExistsAsDevelopment(Exception):
+    """Raised if a version already exists as the development version."""
+
+    def __init__(self, version_number: str):
+        self.message = f"Version number {version_number} already exists as the development version."
+        self.message += " Please choose a different name for this experiment."
 
 
 class ConflictedConfigurationError(Exception):
@@ -373,9 +378,20 @@ class FileCannotBeRead(Exception):
     """Raised when a file cannot be read."""
 
 
+class FileEmpty(Exception):
+    """Raised when a file is empty."""
+
+
 class SQLQueryCannotBeExecuted(Exception):
     """Raised when an SQL Query cannot be executed."""
 
 
 class _SuspiciousFileOperation(Exception):
     pass
+
+
+class AttributeKeyAlreadyExisted(Exception):
+    """Raised when an attribute key already existed."""
+
+    def __init__(self, key: str):
+        self.message = f"Attribute key '{key}' already existed."

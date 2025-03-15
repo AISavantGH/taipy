@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,12 +12,17 @@
 
 import json
 import typing as t
-from abc import ABC
+from abc import ABC, abstractmethod
 from datetime import datetime
 from importlib.util import find_spec
 
 from .._warnings import _warn
 from . import _date_to_string, _MapDict, _string_to_date, _variable_decode
+
+
+class _DoNotUpdate:
+    def __repr__(self):
+        return "Taipy: Do not update"
 
 
 class _TaipyBase(ABC):
@@ -50,8 +55,9 @@ class _TaipyBase(ABC):
             return self.__hash_name
 
     @staticmethod
+    @abstractmethod
     def get_hash():
-        return NotImplementedError
+        raise NotImplementedError
 
     @staticmethod
     def _get_holder_prefixes() -> t.List[str]:
@@ -80,6 +86,8 @@ class _TaipyBool(_TaipyBase):
 
 class _TaipyNumber(_TaipyBase):
     def get(self):
+        if super().get() is None:
+            return None
         try:
             return float(super().get())
         except Exception as e:
@@ -189,6 +197,23 @@ class _TaipyDict(_TaipyBase):
     def get_hash():
         return _TaipyBase._HOLDER_PREFIX + "Di"
 
+class _TaipyTime(_TaipyBase):
+    def get(self):
+        val = super().get()
+        if isinstance(val, datetime):
+            val = _date_to_string(val)
+        elif val is not None:
+            val = str(val)
+        return val
+
+    def cast_value(self, value: t.Any):
+        if isinstance(value, str):
+            return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S')
+        return super().cast_value(value)
+
+    @staticmethod
+    def get_hash():
+        return _TaipyBase._HOLDER_PREFIX + "Tm"
 
 class _TaipyToJson(_TaipyBase):
     def get(self):

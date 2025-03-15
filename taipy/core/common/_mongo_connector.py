@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -22,13 +22,14 @@ def _connect_mongodb(
     The `"mongodb_extra_args"` passed by the user is originally a dictionary, but since `@lru_cache` wrapper only
     accepts hashable parameters, the `"mongodb_extra_args"` should be converted into a frozenset beforehand.
 
-    Parameters:
+    Arguments:
         db_host (str): the database host.
         db_port (int): the database port.
         db_username (str): the database username.
         db_password (str): the database password.
         db_extra_args (frozenset): A frozenset converted from a dictionary of additional arguments to be passed into
             database connection string.
+
     Returns:
         pymongo.MongoClient
     """

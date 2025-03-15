@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,12 +11,12 @@
 
 from typing import Dict, cast
 
-from taipy.config import Config
-from taipy.config._config import _Config
-from taipy.config.checker._checkers._config_checker import _ConfigChecker
-from taipy.config.checker.issue_collector import IssueCollector
-from taipy.config.common.frequency import Frequency
+from taipy.common.config import Config
+from taipy.common.config._config import _Config
+from taipy.common.config.checker._checkers._config_checker import _ConfigChecker
+from taipy.common.config.checker.issue_collector import IssueCollector
 
+from ...common.frequency import Frequency
 from ..data_node_config import DataNodeConfig
 from ..scenario_config import ScenarioConfig
 from ..task_config import TaskConfig
@@ -38,9 +38,67 @@ class _ScenarioConfigChecker(_ConfigChecker):
                 self._check_addition_data_node_configs(scenario_config_id, scenario_config)
                 self._check_additional_dns_not_overlapping_tasks_dns(scenario_config_id, scenario_config)
                 self._check_tasks_in_sequences_exist_in_scenario_tasks(scenario_config_id, scenario_config)
+                self._check_if_children_config_id_is_overlapping_with_properties(scenario_config_id, scenario_config)
                 self._check_comparators(scenario_config_id, scenario_config)
 
         return self._collector
+
+    def _check_if_children_config_id_is_overlapping_with_properties(
+        self, scenario_config_id: str, scenario_config: ScenarioConfig
+    ):
+        if scenario_config.sequences:
+            for sequence in scenario_config.sequences:
+                if sequence in scenario_config.properties:
+                    self._error(
+                        sequence,
+                        scenario_config.sequences[sequence],
+                        f"The sequence name `{sequence}` is overlapping with the "
+                        f"property `{sequence}` of ScenarioConfig `{scenario_config_id}`.",
+                    )
+                if scenario_config.data_nodes:
+                    if sequence in [dn.id for dn in scenario_config.data_nodes if isinstance(dn, DataNodeConfig)]:
+                        self._error(
+                            sequence,
+                            scenario_config.sequences[sequence],
+                            f"The sequence name `{sequence}` is overlapping with the "
+                            f"data node `{sequence}` of ScenarioConfig `{scenario_config_id}`.",
+                        )
+                if scenario_config.tasks:
+                    if sequence in [task.id for task in scenario_config.tasks if isinstance(task, TaskConfig)]:
+                        self._error(
+                            sequence,
+                            scenario_config.sequences[sequence],
+                            f"The sequence name `{sequence}` is overlapping with the "
+                            f"task `{sequence}` of ScenarioConfig `{scenario_config_id}`.",
+                        )
+        if scenario_config.tasks:
+            for task in scenario_config.tasks:
+                if isinstance(task, TaskConfig) and task.id in scenario_config.properties:
+                    self._error(
+                        TaskConfig._ID_KEY,
+                        task.id,
+                        f"The id of the TaskConfig `{task.id}` is overlapping with the "
+                        f"property `{task.id}` of ScenarioConfig `{scenario_config_id}`.",
+                    )
+                if scenario_config.data_nodes:
+                    if isinstance(task, TaskConfig) and task.id in [
+                        dn.id for dn in scenario_config.data_nodes if isinstance(dn, DataNodeConfig)
+                    ]:
+                        self._error(
+                            TaskConfig._ID_KEY,
+                            task.id,
+                            f"The id of the TaskConfig `{task.id}` is overlapping with the "
+                            f"data node `{task.id}` of ScenarioConfig `{scenario_config_id}`.",
+                        )
+        if scenario_config.data_nodes:
+            for data_node in scenario_config.data_nodes:
+                if isinstance(data_node, DataNodeConfig) and data_node.id in scenario_config.properties:
+                    self._error(
+                        DataNodeConfig._ID_KEY,
+                        data_node.id,
+                        f"The id of the DataNodeConfig `{data_node.id}` is overlapping with the "
+                        f"property `{data_node.id}` of ScenarioConfig `{scenario_config_id}`.",
+                    )
 
     def _check_task_configs(self, scenario_config_id: str, scenario_config: ScenarioConfig):
         self._check_children(
@@ -78,7 +136,7 @@ class _ScenarioConfigChecker(_ConfigChecker):
                 f"{ScenarioConfig._COMPARATOR_KEY} field of ScenarioConfig"
                 f" `{scenario_config_id}` must be populated with a dictionary value.",
             )
-        else:
+        elif scenario_config.comparators is not None:
             for data_node_id, comparator in scenario_config.comparators.items():
                 if data_node_id not in Config.data_nodes:
                     self._error(

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,18 +11,15 @@
 
 import dataclasses
 import json
-import os
 from datetime import date, datetime, timedelta
 from enum import Enum
-from os.path import isfile
 from pydoc import locate
 from typing import Any, Dict, List, Optional, Set
 
-from taipy.config.common.scope import Scope
-
-from .._entity._reload import _self_reload
+from .._entity._reload import _Reloader, _self_reload
 from .._version._version_manager_factory import _VersionManagerFactory
-from ._abstract_file import _FileDataNodeMixin
+from ..common.scope import Scope
+from ._file_datanode_mixin import _FileDataNodeMixin
 from .data_node import DataNode
 from .data_node_id import DataNodeId, Edit
 
@@ -30,41 +27,16 @@ from .data_node_id import DataNodeId, Edit
 class JSONDataNode(DataNode, _FileDataNodeMixin):
     """Data Node stored as a JSON file.
 
-    Attributes:
-        config_id (str): Identifier of the data node configuration. This string must be a valid
-            Python identifier.
-        scope (Scope^): The scope of this data node.
-        id (str): The unique identifier of this data node.
-        owner_id (str): The identifier of the owner (sequence_id, scenario_id, cycle_id) or `None`.
-        parent_ids (Optional[Set[str]]): The identifiers of the parent tasks or `None`.
-        last_edit_date (datetime): The date and time of the last modification.
-        edits (List[Edit^]): The ordered list of edits for that job.
-        version (str): The string indicates the application version of the data node to instantiate. If not provided,
-            the current version is used.
-        validity_period (Optional[timedelta]): The duration implemented as a timedelta since the last edit date for
-            which the data node can be considered up-to-date. Once the validity period has passed, the data node is
-            considered stale and relevant tasks will run even if they are skippable (see the
-            [Task management page](../core/entities/task-mgt.md) for more details).
-            If _validity_period_ is set to `None`, the data node is always up-to-date.
-        edit_in_progress (bool): True if a task computing the data node has been submitted
-            and not completed yet. False otherwise.
-        editor_id (Optional[str]): The identifier of the user who is currently editing the data node.
-        editor_expiration_date (Optional[datetime]): The expiration date of the editor lock.
-        path (str): The path to the JSON file.
-        encoder (json.JSONEncoder): The JSON encoder that is used to write into the JSON file.
-        decoder (json.JSONDecoder): The JSON decoder that is used to read from the JSON file.
-        properties (dict[str, Any]): A dictionary of additional properties. The _properties_
-            must have a _"default_path"_ or _"path"_ entry with the path of the JSON file:
+    The *properties* attribute can contain the following optional entries:
 
-            - _"default_path"_ `(str)`: The default path of the CSV file.\n
-            - _"encoding"_ `(str)`: The encoding of the CSV file. The default value is `utf-8`.\n
-            - _"default_data"_: The default data of the data nodes instantiated from this json data node.\n
+    - *default_path* (`str`): The default path of the JSON file used at the instantiation of
+        the data node.
+    - *default_data* (`Any`): The default data of the data node. It is used at the data node
+        instantiation to write the data to the JSON file.
+    - *encoding* (`str`): The encoding of the JSON file. The default value is `utf-8`.\n
     """
 
     __STORAGE_TYPE = "json"
-    __DEFAULT_DATA_KEY = "default_data"
-    __DEFAULT_PATH_KEY = "default_path"
-    __PATH_KEY = "path"
     __ENCODING_KEY = "encoding"
     _ENCODER_KEY = "encoder"
     _DECODER_KEY = "decoder"
@@ -85,19 +57,23 @@ class JSONDataNode(DataNode, _FileDataNodeMixin):
         editor_id: Optional[str] = None,
         editor_expiration_date: Optional[datetime] = None,
         properties: Optional[Dict] = None,
-    ):
+    ) -> None:
+        self.id = id or self._new_id(config_id)
+
         if properties is None:
             properties = {}
-
-        default_value = properties.pop(self.__DEFAULT_DATA_KEY, None)
 
         if self.__ENCODING_KEY not in properties.keys():
             properties[self.__ENCODING_KEY] = "utf-8"
 
-        super().__init__(
+        default_value = properties.pop(self._DEFAULT_DATA_KEY, None)
+        _FileDataNodeMixin.__init__(self, properties)
+
+        DataNode.__init__(
+            self,
             config_id,
             scope,
-            id,
+            self.id,
             owner_id,
             parent_ids,
             last_edit_date,
@@ -109,39 +85,20 @@ class JSONDataNode(DataNode, _FileDataNodeMixin):
             editor_expiration_date,
             **properties,
         )
-        self._path = properties.get(self.__PATH_KEY, properties.get(self.__DEFAULT_PATH_KEY))
-        if self._path and ".data" in self._path:
-            self._path = self._migrate_path(self.storage_type(), self._path)
-
-        if not self._path:
-            self._path = self._build_path(self.storage_type())
-        properties[self.__PATH_KEY] = self._path
 
         self._decoder = self._properties.get(self._DECODER_KEY, _DefaultJSONDecoder)
         self._encoder = self._properties.get(self._ENCODER_KEY, _DefaultJSONEncoder)
 
-        if default_value is not None and not os.path.exists(self._path):
-            self._write(default_value)
-            self._last_edit_date = datetime.now()
-            self._edits.append(
-                Edit(
-                    {
-                        "timestamp": self._last_edit_date,
-                        "writer_identifier": "TAIPY",
-                        "comments": "Default data written.",
-                    }
-                )
-            )
-
-        if not self._last_edit_date and isfile(self._path):  # type: ignore
-            self._last_edit_date = datetime.now()
+        with _Reloader():
+            self._write_default_data(default_value)
 
         self._TAIPY_PROPERTIES.update(
             {
-                self.__PATH_KEY,
-                self.__DEFAULT_PATH_KEY,
+                self._PATH_KEY,
+                self._DEFAULT_PATH_KEY,
+                self._DEFAULT_DATA_KEY,
+                self._IS_GENERATED_KEY,
                 self.__ENCODING_KEY,
-                self.__DEFAULT_DATA_KEY,
                 self._ENCODER_KEY,
                 self._DECODER_KEY,
             }
@@ -149,38 +106,37 @@ class JSONDataNode(DataNode, _FileDataNodeMixin):
 
     @classmethod
     def storage_type(cls) -> str:
+        """Return the storage type of the data node: "json"."""
         return cls.__STORAGE_TYPE
 
     @property  # type: ignore
     @_self_reload(DataNode._MANAGER_NAME)
-    def path(self):
-        return self._path
-
-    @path.setter
-    def path(self, value):
-        self._path = value
-        self.properties[self.__PATH_KEY] = value
-
-    @property  # type: ignore
-    @_self_reload(DataNode._MANAGER_NAME)
-    def encoder(self):
+    def encoder(self) -> json.JSONEncoder:
+        """The JSON encoder that is used to write into the JSON file."""
         return self._encoder
 
     @encoder.setter
-    def encoder(self, encoder: json.JSONEncoder):
+    def encoder(self, encoder: json.JSONEncoder) -> None:
         self.properties[self._ENCODER_KEY] = encoder
 
     @property  # type: ignore
     @_self_reload(DataNode._MANAGER_NAME)
-    def decoder(self):
+    def decoder(self) -> json.JSONDecoder:
+        """The JSON decoder that is used to read from the JSON file."""
         return self._decoder
 
     @decoder.setter
-    def decoder(self, decoder: json.JSONDecoder):
+    def decoder(self, decoder: json.JSONDecoder) -> None:
         self.properties[self._DECODER_KEY] = decoder
 
     def _read(self):
-        with open(self._path, "r", encoding=self.properties[self.__ENCODING_KEY]) as f:
+        return self._read_from_path()
+
+    def _read_from_path(self, path: Optional[str] = None, **read_kwargs) -> Any:
+        if path is None:
+            path = self._path
+
+        with open(path, "r", encoding=self.properties[self.__ENCODING_KEY]) as f:
             return json.load(f, cls=self._decoder)
 
     def _append(self, data: Any):

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,7 +14,7 @@ from taipy.gui import Gui
 
 def test_invalid_control_name(gui: Gui, helpers):
     md_string = "<|invalid|invalid|>"
-    expected_list = ["INVALID SYNTAX - Control is 'invalid'"]
+    expected_list = ["UNKNOWN ELEMENT TYPE 'invalid'"]
     helpers.test_control_md(gui, md_string, expected_list)
 
 
@@ -32,7 +32,7 @@ def test_invalid_property_value(gui: Gui, helpers):
 
 def test_unclosed_block(gui: Gui, helpers):
     md_string = "<|"
-    expected_list = ["<Part", "</Part>"]
+    expected_list = ["<Part", "/>"]
     helpers.test_control_md(gui, md_string, expected_list)
 
 
@@ -51,4 +51,10 @@ def test_closing_unknown_block(gui: Gui, helpers):
 def test_md_link(gui: Gui, helpers):
     md_string = "[content](link)"
     expected_list = ["<a", 'href="link"', "content</a>"]
+    helpers.test_control_md(gui, md_string, expected_list)
+
+
+def test_html_in_md(gui: Gui, helpers):
+    md_string = "<center> <|Hello|text|> </center>"
+    expected_list = ["<center>", "<div", "Hello", "</div>", "</center>"]
     helpers.test_control_md(gui, md_string, expected_list)

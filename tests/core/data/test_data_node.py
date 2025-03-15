@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,18 +14,28 @@ from datetime import datetime, timedelta
 from time import sleep
 from unittest import mock
 
+import freezegun
+import pandas as pd
 import pytest
 
 import taipy.core as tp
-from taipy.config import Config
-from taipy.config.common.scope import Scope
-from taipy.config.exceptions.exceptions import InvalidConfigurationId
+from taipy import Scope
+from taipy.common.config import Config
+from taipy.common.config.exceptions.exceptions import InvalidConfigurationId
 from taipy.core.data._data_manager import _DataManager
+from taipy.core.data._data_manager_factory import _DataManagerFactory
 from taipy.core.data.data_node import DataNode
-from taipy.core.data.data_node_id import DataNodeId
+from taipy.core.data.data_node_id import (
+    EDIT_COMMENT_KEY,
+    EDIT_EDITOR_ID_KEY,
+    EDIT_JOB_ID_KEY,
+    EDIT_TIMESTAMP_KEY,
+    DataNodeId,
+)
 from taipy.core.data.in_memory import InMemoryDataNode
 from taipy.core.exceptions.exceptions import DataNodeIsBeingEdited, NoData
 from taipy.core.job.job_id import JobId
+from taipy.core.task.task import Task
 
 from .utils import FakeDataNode
 
@@ -46,6 +56,20 @@ def funct_b_d(input: str):
 
 
 class TestDataNode:
+    def test_dn_equals(self, data_node):
+        data_manager = _DataManagerFactory()._build_manager()
+
+        dn_id = data_node.id
+        data_manager._set(data_node)
+
+        # # To test if instance is same type
+        task = Task("task", {}, print, [], [], dn_id)
+
+        dn_2 = data_manager._get(dn_id)
+        assert data_node == dn_2
+        assert data_node != dn_id
+        assert data_node != task
+
     def test_create_with_default_values(self):
         dn = DataNode("foo_bar")
         assert dn.config_id == "foo_bar"
@@ -58,6 +82,41 @@ class TestDataNode:
         assert dn.job_ids == []
         assert not dn.is_ready_for_reading
         assert len(dn.properties) == 0
+
+    def test_create_with_ranks(self):
+        # Test _rank is propagated from the config
+        cfg = Config.configure_data_node("foo_bar")
+        cfg._ranks = {"A": 1, "B": 2, "C": 0}
+
+        dn = DataNode("foo_bar")
+        assert dn.config_id == "foo_bar"
+        assert dn.scope == Scope.SCENARIO
+        assert dn.id is not None
+        assert dn.name is None
+        assert dn.owner_id is None
+        assert dn.parent_ids == set()
+        assert dn.last_edit_date is None
+        assert dn.job_ids == []
+        assert not dn.is_ready_for_reading
+        assert len(dn.properties) == 0
+        assert dn._get_rank("A") == 1
+        assert dn._get_rank("B") == 2
+        assert dn._get_rank("C") == 0
+
+    def test_is_up_to_date_when_not_written(self):
+        dn_confg_1 = Config.configure_in_memory_data_node("dn_1", default_data="a")
+        dn_confg_2 = Config.configure_in_memory_data_node("dn_2")
+        task_config_1 = Config.configure_task("t1", funct_a_b, [dn_confg_1], [dn_confg_2])
+        scenario_config = Config.configure_scenario("sc", [task_config_1])
+
+        scenario = tp.create_scenario(scenario_config)
+
+        assert scenario.dn_1.is_up_to_date is True
+        assert scenario.dn_2.is_up_to_date is False
+
+        tp.submit(scenario)
+        assert scenario.dn_1.is_up_to_date is True
+        assert scenario.dn_2.is_up_to_date is True
 
     def test_create(self):
         a_date = datetime.now()
@@ -466,6 +525,8 @@ class TestDataNode:
         _DataManager._set(dn_2)
         assert dn_1.parent_ids == {"sc1"}
         assert dn_2.parent_ids == {"sc1"}
+        dn_2._parent_ids.clear()
+        _DataManager._set(dn_2)
 
         # auto set & reload on edit_in_progress attribute
         assert not dn_2.edit_in_progress
@@ -619,25 +680,12 @@ class TestDataNode:
             data_node.get_parents()
             mck.assert_called_once_with(data_node)
 
-    def test_cacheable_deprecated_false(self):
-        dn = FakeDataNode("foo")
-        with pytest.warns(DeprecationWarning):
-            _ = dn.cacheable
-        assert dn.cacheable is False
-
-    def test_cacheable_deprecated_true(self):
-        dn = FakeDataNode("foo", properties={"cacheable": True})
-        with pytest.warns(DeprecationWarning):
-            _ = dn.cacheable
-        assert dn.cacheable is True
-
     def test_data_node_with_env_variable_value_not_stored(self):
         dn_config = Config.configure_data_node("A", prop="ENV[FOO]")
         with mock.patch.dict(os.environ, {"FOO": "bar"}):
             dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
             assert dn._properties.data["prop"] == "ENV[FOO]"
             assert dn.properties["prop"] == "bar"
-            assert dn.prop == "bar"
 
     def test_path_populated_with_config_default_path(self):
         dn_config = Config.configure_data_node("data_node", "pickle", default_path="foo.p")
@@ -647,7 +695,7 @@ class TestDataNode:
         data_node.path = "baz.p"
         assert data_node.path == "baz.p"
 
-    def test_track_edit(self):
+    def test_edit_edit_tracking(self):
         dn_config = Config.configure_data_node("A")
         data_node = _DataManager._bulk_get_or_create([dn_config])[dn_config]
 
@@ -725,3 +773,181 @@ class TestDataNode:
         # This new syntax will be the only one allowed: https://github.com/Avaiga/taipy-core/issues/806
         dn.properties["name"] = "baz"
         assert dn.name == "baz"
+
+    def test_locked_data_node_write_should_fail_with_wrong_editor(self):
+        dn_config = Config.configure_data_node("A")
+        dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+        dn.lock_edit("editor_1")
+
+        # Should raise exception for wrong editor
+        with pytest.raises(DataNodeIsBeingEdited):
+            dn.write("data", editor_id="editor_2")
+
+        # Should succeed with correct editor
+        dn.write("data", editor_id="editor_1")
+        assert dn.read() == "data"
+
+    def test_locked_data_node_write_should_fail_before_expiration_date_and_succeed_after(self):
+        dn_config = Config.configure_data_node("A")
+        dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+
+        lock_time = datetime.now()
+        with freezegun.freeze_time(lock_time):
+            dn.lock_edit("editor_1")
+
+        with freezegun.freeze_time(lock_time + timedelta(minutes=29)):
+            # Should raise exception for wrong editor and expiration date NOT passed
+            with pytest.raises(DataNodeIsBeingEdited):
+                dn.write("data", editor_id="editor_2")
+
+        with freezegun.freeze_time(lock_time + timedelta(minutes=31)):
+            # Should succeed with wrong editor but expiration date passed
+            dn.write("data", editor_id="editor_2")
+            assert dn.read() == "data"
+
+    def test_locked_data_node_append_should_fail_with_wrong_editor(self):
+        dn_config = Config.configure_csv_data_node("A")
+        dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+        first_line = pd.DataFrame(data={'col1': [1], 'col2': [3]})
+        second_line = pd.DataFrame(data={'col1': [2], 'col2': [4]})
+        data = pd.DataFrame(data={'col1': [1, 2], 'col2': [3, 4]})
+        dn.write(first_line)
+        assert first_line.equals(dn.read())
+
+        dn.lock_edit("editor_1")
+
+        with pytest.raises(DataNodeIsBeingEdited):
+            dn.append(second_line, editor_id="editor_2")
+
+        dn.append(second_line, editor_id="editor_1")
+        assert dn.read().equals(data)
+
+    def test_locked_data_node_append_should_fail_before_expiration_date_and_succeed_after(self):
+        dn_config = Config.configure_csv_data_node("A")
+        dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+        first_line = pd.DataFrame(data={'col1': [1], 'col2': [3]})
+        second_line = pd.DataFrame(data={'col1': [2], 'col2': [4]})
+        data = pd.DataFrame(data={'col1': [1, 2], 'col2': [3, 4]})
+        dn.write(first_line)
+        assert first_line.equals(dn.read())
+
+        lock_time = datetime.now()
+        with freezegun.freeze_time(lock_time):
+            dn.lock_edit("editor_1")
+
+        with freezegun.freeze_time(lock_time + timedelta(minutes=29)):
+            # Should raise exception for wrong editor and expiration date NOT passed
+            with pytest.raises(DataNodeIsBeingEdited):
+                dn.append(second_line, editor_id="editor_2")
+
+        with freezegun.freeze_time(lock_time + timedelta(minutes=31)):
+            # Should succeed with wrong editor but expiration date passed
+            dn.append(second_line, editor_id="editor_2")
+            assert dn.read().equals(data)
+
+    def test_orchestrator_write_without_editor_id(self):
+        dn_config = Config.configure_data_node("A")
+        dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+        dn.lock_edit("editor_1")
+
+        # Orchestrator write without editor_id should succeed
+        dn.write("orchestrator_data")
+        assert dn.read() == "orchestrator_data"
+
+    def test_editor_fails_writing_a_data_node_locked_by_orchestrator(self):
+        dn_config = Config.configure_data_node("A")
+        dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+        dn.lock_edit() # Locked by orchestrator
+
+        with pytest.raises(DataNodeIsBeingEdited):
+            dn.write("data", editor_id="editor_1")
+
+        # Orchestrator write without editor_id should succeed
+        dn.write("orchestrator_data", job_id=JobId("job_1"))
+        assert dn.read() == "orchestrator_data"
+
+    def test_editor_fails_appending_a_data_node_locked_by_orchestrator(self):
+        dn_config = Config.configure_csv_data_node("A")
+        dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+        first_line = pd.DataFrame(data={'col1': [1], 'col2': [3]})
+        second_line = pd.DataFrame(data={'col1': [2], 'col2': [4]})
+        data = pd.DataFrame(data={'col1': [1, 2], 'col2': [3, 4]})
+        dn.write(first_line)
+        assert first_line.equals(dn.read())
+        dn = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+        dn.lock_edit() # Locked by orchestrator
+
+        with pytest.raises(DataNodeIsBeingEdited):
+            dn.append(second_line, editor_id="editor_1")
+        assert dn.read().equals(first_line)
+
+        dn.append(second_line, job_id=JobId("job_1"))
+        assert dn.read().equals(data)
+
+    def test_track_edit(self):
+        dn_config = Config.configure_data_node("A")
+        data_node = _DataManager._bulk_get_or_create([dn_config])[dn_config]
+
+        before = datetime.now()
+        data_node.track_edit(job_id="job_1")
+        data_node.track_edit(editor_id="editor_1")
+        data_node.track_edit(comment="This is a comment on this edit")
+        data_node.track_edit(editor_id="editor_2", comment="This is another comment on this edit")
+        data_node.track_edit(editor_id="editor_3", foo="bar")
+        after = datetime.now()
+        timestamp = datetime.now()
+        data_node.track_edit(timestamp=timestamp)
+        _DataManagerFactory._build_manager()._set(data_node)
+        # To save the edits because track edit does not save the data node
+
+        assert len(data_node.edits) == 6
+        assert data_node.edits[-1] == data_node.get_last_edit()
+        assert data_node.last_edit_date == data_node.get_last_edit().get(EDIT_TIMESTAMP_KEY)
+
+        edit_0 = data_node.edits[0]
+        assert len(edit_0) == 2
+        assert edit_0[EDIT_JOB_ID_KEY] == "job_1"
+        assert edit_0[EDIT_TIMESTAMP_KEY] >= before
+        assert edit_0[EDIT_TIMESTAMP_KEY] <= after
+
+        edit_1 = data_node.edits[1]
+        assert len(edit_1) == 2
+        assert edit_1[EDIT_EDITOR_ID_KEY] == "editor_1"
+        assert edit_1[EDIT_TIMESTAMP_KEY] >= before
+        assert edit_1[EDIT_TIMESTAMP_KEY] <= after
+
+        edit_2 = data_node.edits[2]
+        assert len(edit_2) == 2
+        assert edit_2[EDIT_COMMENT_KEY] == "This is a comment on this edit"
+        assert edit_2[EDIT_TIMESTAMP_KEY] >= before
+        assert edit_2[EDIT_TIMESTAMP_KEY] <= after
+
+        edit_3 = data_node.edits[3]
+        assert len(edit_3) == 3
+        assert edit_3[EDIT_EDITOR_ID_KEY] == "editor_2"
+        assert edit_3[EDIT_COMMENT_KEY] == "This is another comment on this edit"
+        assert edit_3[EDIT_TIMESTAMP_KEY] >= before
+        assert edit_3[EDIT_TIMESTAMP_KEY] <= after
+
+        edit_4 = data_node.edits[4]
+        assert len(edit_4) == 3
+        assert edit_4[EDIT_EDITOR_ID_KEY] == "editor_3"
+        assert edit_4["foo"] == "bar"
+        assert edit_4[EDIT_TIMESTAMP_KEY] >= before
+        assert edit_4[EDIT_TIMESTAMP_KEY] <= after
+
+        edit_5 = data_node.edits[5]
+        assert len(edit_5) == 1
+        assert edit_5[EDIT_TIMESTAMP_KEY] == timestamp
+
+    def test_normalize_path(self):
+        dn = DataNode(
+            config_id="foo_bar",
+            scope=Scope.SCENARIO,
+            id=DataNodeId("an_id"),
+            path=r"data\foo\bar.csv",
+        )
+        assert dn.config_id == "foo_bar"
+        assert dn.scope == Scope.SCENARIO
+        assert dn.id == "an_id"
+        assert dn.properties["path"] == "data/foo/bar.csv"

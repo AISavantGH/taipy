@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,22 +13,28 @@ import datetime
 import json
 import os
 import pathlib
+import re
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from time import sleep
 
+import freezegun
 import numpy as np
 import pandas as pd
 import pytest
 
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
-from taipy.config.exceptions.exceptions import InvalidConfigurationId
+from taipy import Scope
+from taipy.common.config import Config
+from taipy.common.config.exceptions.exceptions import InvalidConfigurationId
+from taipy.core.common._utils import _normalize_path
 from taipy.core.data._data_manager import _DataManager
+from taipy.core.data._data_manager_factory import _DataManagerFactory
 from taipy.core.data.data_node_id import DataNodeId
 from taipy.core.data.json import JSONDataNode
 from taipy.core.data.operator import JoinOperator, Operator
 from taipy.core.exceptions.exceptions import NoData
+from taipy.core.reason import NoFileToDownload, NotAFile
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -86,21 +92,39 @@ class MyCustomDecoder(json.JSONDecoder):
 class TestJSONDataNode:
     def test_create(self):
         path = "data/node/path"
-        dn = JSONDataNode("foo_bar", Scope.SCENARIO, properties={"default_path": path, "name": "super name"})
-        assert isinstance(dn, JSONDataNode)
-        assert dn.storage_type() == "json"
-        assert dn.config_id == "foo_bar"
-        assert dn.name == "super name"
-        assert dn.scope == Scope.SCENARIO
-        assert dn.id is not None
-        assert dn.owner_id is None
-        assert dn.last_edit_date is None
-        assert dn.job_ids == []
-        assert not dn.is_ready_for_reading
-        assert dn.path == path
+        json_dn_config = Config.configure_json_data_node(id="foo_bar", default_path=path, name="super name")
+        dn_1 = _DataManagerFactory._build_manager()._create_and_set(json_dn_config, None, None)
+        assert isinstance(dn_1, JSONDataNode)
+        assert dn_1.storage_type() == "json"
+        assert dn_1.config_id == "foo_bar"
+        assert dn_1.name == "super name"
+        assert dn_1.scope == Scope.SCENARIO
+        assert dn_1.id is not None
+        assert dn_1.owner_id is None
+        assert dn_1.last_edit_date is None
+        assert dn_1.job_ids == []
+        assert not dn_1.is_ready_for_reading
+        assert dn_1.path == path
+
+        json_dn_config_2 = Config.configure_json_data_node(id="foo", default_path=path, encoding="utf-16")
+        dn_2 = _DataManagerFactory._build_manager()._create_and_set(json_dn_config_2, None, None)
+        assert isinstance(dn_2, JSONDataNode)
+        assert dn_2.storage_type() == "json"
+        assert dn_2.properties["encoding"] == "utf-16"
+
+        json_dn_config_3 = Config.configure_json_data_node(
+            id="foo", default_path=path, encoder=MyCustomEncoder, decoder=MyCustomDecoder
+        )
+        dn_3 = _DataManagerFactory._build_manager()._create_and_set(json_dn_config_3, None, None)
+        assert isinstance(dn_3, JSONDataNode)
+        assert dn_3.storage_type() == "json"
+        assert dn_3.properties["encoder"] == MyCustomEncoder
+        assert dn_3.encoder == MyCustomEncoder
+        assert dn_3.properties["decoder"] == MyCustomDecoder
+        assert dn_3.decoder == MyCustomDecoder
 
         with pytest.raises(InvalidConfigurationId):
-            dn = JSONDataNode(
+            _ = JSONDataNode(
                 "foo bar", Scope.SCENARIO, properties={"default_path": path, "has_header": False, "name": "super name"}
             )
 
@@ -308,12 +332,13 @@ class TestJSONDataNode:
     @pytest.mark.parametrize(
         ["properties", "exists"],
         [
-            ({}, False),
             ({"default_data": {"foo": "bar"}}, True),
+            ({}, False),
         ],
     )
     def test_create_with_default_data(self, properties, exists):
-        dn = JSONDataNode("foo", Scope.SCENARIO, DataNodeId("dn_id"), properties=properties)
+        dn = JSONDataNode("foo", Scope.SCENARIO, DataNodeId(f"dn_id_{uuid.uuid4()}"), properties=properties)
+        assert dn.path == f"{Config.core.storage_folder}jsons/{dn.id}.json"
         assert os.path.exists(dn.path) is exists
 
     def test_set_path(self):
@@ -366,5 +391,104 @@ class TestJSONDataNode:
 
         dn = JSONDataNode("foo", Scope.SCENARIO, properties={"path": path})
 
-        assert ".data" not in dn.path.name
+        assert ".data" not in dn.path
         assert os.path.exists(dn.path)
+
+    def test_is_downloadable(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/json/example_dict.json")
+        dn = JSONDataNode("foo", Scope.SCENARIO, properties={"path": path})
+        reasons = dn.is_downloadable()
+        assert reasons
+        assert reasons.reasons == ""
+
+    def test_is_not_downloadable_no_file(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/json/wrong_path.json")
+        dn = JSONDataNode("foo", Scope.SCENARIO, properties={"path": path})
+        reasons = dn.is_downloadable()
+        assert not reasons
+        assert len(reasons._reasons) == 1
+        assert str(NoFileToDownload(_normalize_path(path), dn.id)) in reasons.reasons
+
+    def is_not_downloadable_not_a_file(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/json")
+        dn = JSONDataNode("foo", Scope.SCENARIO, properties={"path": path})
+        reasons = dn.is_downloadable()
+        assert not reasons
+        assert len(reasons._reasons) == 1
+        assert str(NotAFile(_normalize_path(path), dn.id)) in reasons.reasons
+
+    def test_get_download_path(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/json/example_dict.json")
+        dn = JSONDataNode("foo", Scope.SCENARIO, properties={"path": path})
+        assert re.split(r"[\\/]", dn._get_downloadable_path()) == re.split(r"[\\/]", path)
+
+    def test_get_download_path_with_not_existed_file(self):
+        dn = JSONDataNode("foo", Scope.SCENARIO, properties={"path": "NOT_EXISTED.json"})
+        assert dn._get_downloadable_path() == ""
+
+    def test_upload(self, json_file, tmpdir_factory):
+        old_json_path = tmpdir_factory.mktemp("data").join("df.json").strpath
+        old_data = [{"a": 0, "b": 1, "c": 2}, {"a": 3, "b": 4, "c": 5}]
+
+        dn = JSONDataNode("foo", Scope.SCENARIO, properties={"path": old_json_path})
+        dn.write(old_data)
+        old_last_edit_date = dn.last_edit_date
+
+        with open(json_file, "r") as f:
+            upload_content = json.load(f)
+
+        with freezegun.freeze_time(old_last_edit_date + datetime.timedelta(seconds=1)):
+            dn._upload(json_file)
+
+        assert dn.read() == upload_content  # The content of the dn should change to the uploaded content
+        assert dn.last_edit_date > old_last_edit_date
+        assert dn.path == _normalize_path(old_json_path)  # The path of the dn should not change
+
+    def test_upload_with_upload_check(self, json_file, tmpdir_factory):
+        old_json_path = tmpdir_factory.mktemp("data").join("df.json").strpath
+        old_data = [{"a": 0, "b": 1, "c": 2}, {"a": 3, "b": 4, "c": 5}]
+
+        dn = JSONDataNode("foo", Scope.SCENARIO, properties={"path": old_json_path})
+        dn.write(old_data)
+        old_last_edit_date = dn.last_edit_date
+
+        def check_data_keys(upload_path, upload_data):
+            all_column_is_abc = all(data.keys() == {"a", "b", "c"} for data in upload_data)
+            return upload_path.endswith(".json") and all_column_is_abc
+
+        not_exists_json_path = tmpdir_factory.mktemp("data").join("not_exists.json").strpath
+        reasons = dn._upload(not_exists_json_path, upload_checker=check_data_keys)
+        assert bool(reasons) is False
+        assert (
+            str(list(reasons._reasons[dn.id])[0]) == "The uploaded file 'not_exists.json' can not be read,"
+            f" therefore is not a valid data file for data node '{dn.id}'"
+        )
+
+        not_json_path = tmpdir_factory.mktemp("data").join("wrong_format_df.not_json").strpath
+        with open(not_json_path, "w") as f:
+            json.dump([{"a": 1, "b": 2, "d": 3}, {"a": 4, "b": 5, "d": 6}], f)
+        # The upload should fail when the file is not a json
+        reasons = dn._upload(not_json_path, upload_checker=check_data_keys)
+        assert bool(reasons) is False
+        assert (
+            str(list(reasons._reasons[dn.id])[0])
+            == f"The uploaded file 'wrong_format_df.not_json' has invalid data for data node '{dn.id}'"
+        )
+
+        wrong_format_json_path = tmpdir_factory.mktemp("data").join("wrong_format_df.json").strpath
+        with open(wrong_format_json_path, "w") as f:
+            json.dump([{"a": 1, "b": 2, "d": 3}, {"a": 4, "b": 5, "d": 6}], f)
+        # The upload should fail when check_data_keys() return False
+        reasons = dn._upload(wrong_format_json_path, upload_checker=check_data_keys)
+        assert bool(reasons) is False
+        assert (
+            str(list(reasons._reasons[dn.id])[0])
+            == f"The uploaded file 'wrong_format_df.json' has invalid data for data node '{dn.id}'"
+        )
+
+        assert dn.read() == old_data  # The content of the dn should not change when upload fails
+        assert dn.last_edit_date == old_last_edit_date  # The last edit date should not change when upload fails
+        assert dn.path == _normalize_path(old_json_path)  # The path of the dn should not change
+
+        # The upload should succeed when check_data_keys() return True
+        assert dn._upload(json_file, upload_checker=check_data_keys)

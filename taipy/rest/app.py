@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -18,7 +18,7 @@ from .commons.encoder import _CustomEncoder
 from .extensions import apispec
 
 
-def create_app(testing=False, flask_env=None, secret_key=None):
+def create_app(testing=False, flask_env=None, secret_key=None) -> Flask:
     """Application factory, used to create application"""
     app = Flask(__name__)
     app.config.update(

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -23,7 +23,6 @@ class DataNodeSchema(Schema):
     last_edit_date = fields.String()
     job_ids = fields.List(fields.String)
     version = fields.String()
-    cacheable = fields.Boolean()
     validity_days = fields.Float()
     validity_seconds = fields.Float()
     edit_in_progress = fields.Boolean()
@@ -34,7 +33,6 @@ class DataNodeConfigSchema(Schema):
     name = fields.String()
     storage_type = fields.String()
     scope = fields.Integer()
-    cacheable = fields.Boolean()
 
     @pre_dump
     def serialize_scope(self, obj, **kwargs):

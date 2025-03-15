@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -15,14 +15,15 @@
 # -----------------------------------------------------------------------------------------
 # Demonstrate how to share variable values across multiple clients.
 # This application creates a thread that increments a value every few seconds.
-# The value is updated for every client using the state.broadcast() method.
-# The text of the button that starts or stops the thread is updated on every client's browser
-# using a direct assignment of the state property because the variable is declared 'shared'.
+# The value is updated for every client in a function invoked by Gui.broadcast_change().
+# The text of the button that starts or stops the thread is updated using the
+# State.assign() method, and udateds on every client's browser because the variable was
+# declared 'shared' by calling Gui.add_shared_variable().
 # -----------------------------------------------------------------------------------------
 from threading import Event, Thread
 from time import sleep
 
-from taipy.gui import Gui, State, broadcast_callback
+from taipy.gui import Gui, State
 
 counter = 0
 
@@ -30,27 +31,17 @@ counter = 0
 thread = None
 thread_event = Event()
 
-button_texts = ["Start", "Stop"]
-# Text in the start/stop button (initially "Start")
-button_text = button_texts[0]
-
-
-# Invoked by the timer
-def update_counter(state: State, c):
-    # Update all clients
-    state.broadcast("counter", c)
-
 
 def count(event, gui):
     while not event.is_set():
         global counter
         counter = counter + 1
-        broadcast_callback(gui, update_counter, [counter])
+        gui.broadcast_change("counter", counter)
         sleep(2)
 
 
 # Start or stop the timer when the button is pressed
-def start_or_stop(state):
+def start_or_stop(state: State):
     global thread
     if thread:  # Timer is running
         thread_event.set()
@@ -59,20 +50,23 @@ def start_or_stop(state):
         thread_event.clear()
         thread = Thread(target=count, args=[thread_event, state.get_gui()])
         thread.start()
-    # Update button status.
-    # Because "button_text" is shared, all clients are updated
-    state.button_text = button_texts[1 if thread else 0]
+    # Update button status for all states.
+    state.assign("button_text", button_texts[1 if thread else 0])
 
 
-page = """# Broadcasting values
+button_texts = ["Start", "Stop"]
+# Text in the start/stop button (initially "Start")
+button_text = button_texts[0]
 
+page = """
 Counter: <|{counter}|>
 
 Timer: <|{button_text}|button|on_action=start_or_stop|>
 """
 
-# Declare "button_text" as a shared variable.
-# Assigning a value to a state's 'button_text' property is propagated to all clients
-Gui.add_shared_variable("button_text")
+if __name__ == "__main__":
+    # Declare "button_text" as a shared variable.
+    # Assigning a value to a state's 'button_text' property is propagated to all clients
+    Gui.add_shared_variable("button_text")
 
-Gui(page).run()
+    Gui(page).run(title="Broadcasting values")

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -44,7 +44,7 @@ def test_du_table_data_fetched(gui: Gui, helpers, csvdata):
             "name": "_TpD_tpec_TpExPr_csvdata_TPMDL_0",
             "payload": {
                 "columns": ["Day", "Entity", "Code", "Daily hospital occupancy"],
-                "pagekey": "0-100--asc",
+                "pagekey": "0-100-asc",
                 "start": 0,
                 "end": 9,
                 "orderby": "",

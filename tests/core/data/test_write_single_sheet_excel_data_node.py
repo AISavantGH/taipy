@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
-from taipy.config.common.scope import Scope
+from taipy import Scope
 from taipy.core.data.excel import ExcelDataNode
 from taipy.core.exceptions.exceptions import SheetNameLengthMismatch
 
@@ -34,7 +34,7 @@ def cleanup(tmp_excel_file):
         try:
             os.remove(tmp_excel_file)
         except Exception as e:
-            from taipy.logger._taipy_logger import _TaipyLogger
+            from taipy.common.logger._taipy_logger import _TaipyLogger
 
             logger = _TaipyLogger._get_logger()
             logger.error(f"Failed to delete {tmp_excel_file}. {e}")

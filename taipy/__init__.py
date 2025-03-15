@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,8 +12,8 @@
 from importlib.util import find_spec
 
 if find_spec("taipy"):
-    if find_spec("taipy.config"):
-        from taipy.config._init import *
+    if find_spec("taipy.common") and find_spec("taipy.common.config"):
+        from taipy.common.config._init import *
 
     if find_spec("taipy.gui"):
         from taipy.gui._init import *
@@ -29,6 +29,9 @@ if find_spec("taipy"):
 
     if find_spec("taipy.enterprise"):
         from taipy.enterprise._init import *
+
+    if find_spec("taipy.designer"):
+        from taipy.designer._init import *
 
     if find_spec("taipy._run"):
         from taipy._run import _run as run

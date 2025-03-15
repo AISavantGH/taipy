@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,8 +12,6 @@
 import filecmp
 import os
 import shutil
-import sys
-from sqlite3 import OperationalError
 from unittest.mock import patch
 
 import mongomock
@@ -161,105 +159,6 @@ def test_migrate_fs_non_existing_folder(caplog):
             _MigrateCLI.handle_command()
     assert err.value.code == 1
     assert "Folder 'non-existing-folder' does not exist." in caplog.text
-
-
-@patch("taipy.core._entity._migrate_cli._migrate_sql_entities")
-def test_migrate_sql_specified_path(_migrate_sql_entities_mock, tmp_sqlite):
-    _MigrateCLI.create_parser()
-
-    # Test the _migrate_sql_entities is called once with the correct path
-    with pytest.raises(SystemExit):
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql", tmp_sqlite, "--skip-backup"]):
-            _MigrateCLI.handle_command()
-            assert _migrate_sql_entities_mock.assert_called_once_with(path=tmp_sqlite)
-
-
-def test_migrate_sql_backup_and_remove(caplog, tmp_sqlite):
-    _MigrateCLI.create_parser()
-
-    # Create the .sqlite file to test
-    with open(tmp_sqlite, "w") as f:
-        f.write("")
-
-    file_name, file_extension = tmp_sqlite.rsplit(".", 1)
-    backup_sqlite = f"{file_name}_backup.{file_extension}"
-
-    # Remove backup when it does not exist should raise an error
-    with pytest.raises(SystemExit) as err:
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql", tmp_sqlite, "--remove-backup"]):
-            _MigrateCLI.handle_command()
-    assert err.value.code == 1
-    assert f"The backup database '{backup_sqlite}' does not exist." in caplog.text
-    assert not os.path.exists(backup_sqlite)
-
-    # Run without --skip-backup to create the backup database
-    with pytest.raises((SystemExit, OperationalError)):
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql", tmp_sqlite]):
-            _MigrateCLI.handle_command()
-
-    assert os.path.exists(backup_sqlite)
-
-    # Remove backup
-    with pytest.raises(SystemExit):
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql", tmp_sqlite, "--remove-backup"]):
-            _MigrateCLI.handle_command()
-    assert f"Removed backup entities from the backup database '{backup_sqlite}'." in caplog.text
-    assert not os.path.exists(backup_sqlite)
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Does not run on windows due to PermissionError: [WinError 32]")
-def test_migrate_sql_backup_and_restore(caplog, tmp_sqlite):
-    _MigrateCLI.create_parser()
-
-    # Create the .sqlite file to test
-    with open(tmp_sqlite, "w") as f:
-        f.write("")
-
-    file_name, file_extension = tmp_sqlite.rsplit(".", 1)
-    backup_sqlite = f"{file_name}_backup.{file_extension}"
-
-    # Restore backup when it does not exist should raise an error
-    with pytest.raises(SystemExit) as err:
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql", tmp_sqlite, "--restore"]):
-            _MigrateCLI.handle_command()
-    assert err.value.code == 1
-    assert f"The backup database '{backup_sqlite}' does not exist." in caplog.text
-    assert not os.path.exists(backup_sqlite)
-
-    # Run without --skip-backup to create the backup database
-    with pytest.raises((SystemExit, OperationalError)):
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql", tmp_sqlite]):
-            _MigrateCLI.handle_command()
-
-    assert os.path.exists(backup_sqlite)
-
-    # Restore the backup
-    with pytest.raises(SystemExit):
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql", tmp_sqlite, "--restore"]):
-            _MigrateCLI.handle_command()
-    assert f"Restored entities from the backup database '{backup_sqlite}' to '{tmp_sqlite}'." in caplog.text
-    assert not os.path.exists(backup_sqlite)
-
-
-def test_migrate_sql_non_existing_path(caplog):
-    _MigrateCLI.create_parser()
-
-    # Test migrate without providing a path
-    with pytest.raises(SystemExit) as err:
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql"]):
-            _MigrateCLI.handle_command()
-
-    assert err.value.code == 1
-    assert "Missing the required sqlite path." in caplog.text
-
-    caplog.clear()
-
-    # Test migrate with a non-existing-path.sqlite file
-    with pytest.raises(SystemExit) as err:
-        with patch("sys.argv", ["prog", "migrate", "--repository-type", "sql", "non-existing-path.sqlite"]):
-            _MigrateCLI.handle_command()
-    assert err.value.code == 1
-    assert "File 'non-existing-path.sqlite' does not exist." in caplog.text
 
 
 @patch("taipy.core._entity._migrate_cli._migrate_mongo_entities")

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -18,4 +18,4 @@ if t.TYPE_CHECKING:
 
 
 def _varname_from_content(gui: Gui, content: str) -> t.Optional[str]:
-    return next((k for k, v in gui._get_locals_bind().items() if isinstance(v, str) and v == content), None)
+    return next((k for k, v in gui._get_locals_bind().items() if isinstance(v, str) and v == content), None)  # type: ignore[attr-defined]

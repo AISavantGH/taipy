@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -28,9 +28,9 @@ class Partial(_Page):
     and not related pages. This allows not to have to repeat yourself when
     creating your page templates.
 
-    Visual elements such as [`part`](../gui/viselements/part.md),
-    [`dialog`](../gui/viselements/dialog.md) or
-    [`pane`](../gui/viselements/pane.md) can use Partials.
+    Visual elements such as [`part`](../../../../../refmans/gui/viselements/generic/part.md),
+    [`dialog`](../../../../../refmans/gui/viselements/generic/dialog.md) or
+    [`pane`](../../../../../refmans/gui/viselements/generic/pane.md) can use Partials.
 
     Note that `Partial` has no constructor (no `__init__()` method): to create a
     `Partial`, you must call the `Gui.add_partial()^` function.
@@ -53,19 +53,19 @@ class Partial(_Page):
         else:
             self._route = route
 
-    def update_content(self, state: State, content: str | "Page"):
+    def update_content(self, state: State, content: t.Union[str, "Page"]):
         """Update partial content.
 
         Arguments:
             state (State^): The current user state as received in any callback.
             content (str): The new content to use and display.
         """
-        if state and state._gui and callable(state._gui._update_partial):
-            state._gui._update_partial(self.__copy(content))
+        if state and state._gui and callable(state._gui._update_partial):  # type: ignore[attr-defined]
+            state._gui._update_partial(self.__copy(content))  # type: ignore[attr-defined]
         else:
             _warn("'Partial.update_content()' must be called in the context of a callback.")
 
-    def __copy(self, content: str | "Page") -> Partial:
+    def __copy(self, content:  t.Union[str, "Page"]) -> Partial:
         new_partial = Partial(self._route)
         from .page import Page
 

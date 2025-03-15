@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,9 +11,9 @@
 
 from typing import Any, List
 
-from taipy.config._serializer._toml_serializer import _TomlSerializer
-from taipy.config.config import Config
-from taipy.logger._taipy_logger import _TaipyLogger
+from taipy.common.config import Config
+from taipy.common.config._serializer._toml_serializer import _TomlSerializer
+from taipy.common.logger._taipy_logger import _TaipyLogger
 
 from ...data._data_manager_factory import _DataManagerFactory
 from ...data.data_node import DataNode
@@ -65,7 +65,7 @@ class _TaskFunctionWrapper:
                 for res, dn in zip(_results, outputs):
                     try:
                         data_node = data_manager._get(dn.id)
-                        data_node.write(res, job_id=job_id)
+                        data_node._write(res)
                     except Exception as e:
                         logger.error("Error during write", exc_info=1)
                         exceptions.append(DataNodeWritingError(f"Error writing in datanode id {dn.id}: {e}"))

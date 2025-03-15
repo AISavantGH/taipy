@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,7 +13,7 @@ import typing as t
 
 import numpy as np
 
-from ..utils import Decimator
+from .base import Decimator
 
 
 class LTTB(Decimator):
@@ -28,7 +28,14 @@ class LTTB(Decimator):
 
     _CHART_MODES = ["lines+markers", "lines", "markers"]
 
-    def __init__(self, n_out: int, threshold: t.Optional[int] = None, zoom: t.Optional[bool] = True) -> None:
+    def __init__(
+        self,
+        n_out: int,
+        threshold: t.Optional[int] = None,
+        zoom: t.Optional[bool] = True,
+        # on_decimate: t.Optional[t.Callable] = None,
+        # apply_decimator: t.Optional[t.Callable] = None,
+    ) -> None:
         """Initialize a new `LTTB`.
 
         Arguments:
@@ -38,6 +45,10 @@ class LTTB(Decimator):
             zoom (Optional[bool]): set to True to reapply the decimation
                 when zoom or re-layout events are triggered.
         """
+        # on_decimate (Optional[Callable]): an user-defined function that is executed when the decimator
+        #     is found during runtime. This function can be used to provide custom decimation logic.
+        # apply_decimator (Optional[Callable]): an user-defined function that is executed when the decimator
+        #     is applied to modify the data.
         super().__init__(threshold, zoom)
         self._n_out = n_out
 
@@ -47,7 +58,7 @@ class LTTB(Decimator):
         a_minus_bs = a - bs
         return 0.5 * abs((a[0] - c[0]) * (bs_minus_a[:, 1]) - (a_minus_bs[:, 0]) * (c[1] - a[1]))
 
-    def decimate(self, data: np.ndarray, payload: t.Dict[str, t.Any]) -> np.ndarray:
+    def _decimate(self, data: np.ndarray, payload: t.Dict[str, t.Any]) -> np.ndarray:
         n_out = self._n_out
         if n_out >= data.shape[0]:
             return np.full(len(data), True)

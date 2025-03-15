@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,8 +11,8 @@
 
 from datetime import timedelta
 
-from taipy.config import Config
-from taipy.config.common.scope import Scope
+from taipy import Scope
+from taipy.common.config import Config
 
 
 class TestConfig:
@@ -27,7 +27,7 @@ class TestConfig:
         assert len(Config.data_nodes) == 2
 
     def test_configure_generic_data_node(self):
-        a, b, c, d, e, f, g, h = "foo", print, print, tuple([]), tuple([]), Scope.SCENARIO, timedelta(1), "qux"
+        a, b, c, d, e, f, g, h = "foo", print, print, (), (), Scope.SCENARIO, timedelta(1), "qux"
         Config.configure_generic_data_node(a, b, c, d, e, f, g, property=h)
         assert len(Config.data_nodes) == 2
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -12,26 +12,43 @@
  */
 import { Theme, alpha } from "@mui/material";
 import { PopoverOrigin } from "@mui/material/Popover";
+import { ReactNode } from "react";
 
-import { useDynamicProperty } from "taipy-gui";
+import { getUpdateVar } from "taipy-gui";
+
+
+export interface CoreProps {
+    id?: string;
+    updateVarName?: string;
+    active?: boolean;
+    defaultActive?: boolean;
+    coreChanged?: Record<string, unknown>;
+    error?: string;
+    updateVars: string;
+    libClassName?: string;
+    className?: string;
+    dynamicClassName?: string;
+    propagate?: boolean;
+    children?: ReactNode;
+}
 
 export type ScenarioFull = [
-    string,     // id
-    boolean,    // is_primary
-    string,     // config_id
-    string,     // creation_date
-    string,     // cycle label
-    string,     // label
-    string[],   // tags
-    Array<[string, string]>,    // properties
-    Array<[string, string[], boolean, boolean]>,   // sequences (label, task ids, submittable, editable)
+    string, // id
+    boolean, // is_primary
+    string, // config_id
+    string, // creation_date
+    string, // cycle label
+    string, // label
+    string[], // tags
+    Array<[string, string]>, // properties
+    Array<[string, string[], string, string]>, // sequences (label, task ids, notSubmittableReason, notEditableReason)
     Record<string, string>, // tasks (id: label)
-    string[],   // authorized_tags
-    boolean,    // deletable
-    boolean,    // promotable
-    boolean,    // submittable
-    boolean,    // readable
-    boolean     // editable
+    string[], // authorized_tags
+    string, // notDeletableReason
+    string, // notPromotableReason
+    string, // notSubmittableReason
+    string, // notReadableReason
+    string // notEditableReason
 ];
 
 export enum ScFProps {
@@ -136,9 +153,6 @@ export const tinyIconButtonSx = {
     },
 };
 
-export const useClassNames = (libClassName?: string, dynamicClassName?: string, className?: string) =>
-    ((libClassName || "") + " " + (useDynamicProperty(dynamicClassName, className, undefined) || "")).trim();
-
 export const disableColor = <T>(color: T, disabled: boolean) => (disabled ? ("disabled" as T) : color);
 
 export const hoverSx = {
@@ -215,3 +229,11 @@ export const MenuProps = {
 export const selectSx = { m: 1, width: 300 };
 
 export const DeleteIconSx = { height: 50, width: 50, p: 0 };
+
+export const EmptyArray = [];
+
+export const getUpdateVarNames = (updateVars: string, ...vars: string[]) =>
+    vars.map((v) => getUpdateVar(updateVars, v) || "").filter((v) => v);
+
+export const EllipsisSx = { textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" };
+export const SecondaryEllipsisProps = { sx: EllipsisSx };

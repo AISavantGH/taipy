@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,9 +12,9 @@
 from copy import copy
 from datetime import datetime, timedelta
 from pydoc import locate
+from typing import Dict
 
 from .._repository._abstract_converter import _AbstractConverter
-from .._version._utils import _migrate_entity
 from ..common._utils import _load_fct
 from ..data._data_model import _DataNodeModel
 from ..data.data_node import DataNode
@@ -121,14 +121,13 @@ class _DataNodeConverter(_AbstractConverter):
                     for v in properties[exposed_type_key]
                 ]
             else:
-                properties[
-                    exposed_type_key
-                ] = f"{properties[exposed_type_key].__module__}.{properties[exposed_type_key].__qualname__}"
+                properties[exposed_type_key] = (
+                    f"{properties[exposed_type_key].__module__}.{properties[exposed_type_key].__qualname__}"
+                )
         return properties
 
     @classmethod
-    def _entity_to_model(cls, data_node: DataNode) -> _DataNodeModel:
-        properties = data_node._properties.data.copy()
+    def _serialize_properties(cls, data_node: DataNode, properties: Dict) -> Dict:
         if data_node.storage_type() == GenericDataNode.storage_type():
             properties = cls.__serialize_generic_dn_properties(properties)
 
@@ -145,6 +144,11 @@ class _DataNodeConverter(_AbstractConverter):
             properties = cls.__serialize_exposed_type(
                 properties, cls._EXPOSED_TYPE_KEY, cls._VALID_STRING_EXPOSED_TYPES
             )
+        return properties
+
+    @classmethod
+    def _entity_to_model(cls, data_node: DataNode) -> _DataNodeModel:
+        properties = cls._serialize_properties(data_node, data_node._properties.data.copy())
 
         return _DataNodeModel(
             data_node.id,
@@ -274,32 +278,35 @@ class _DataNodeConverter(_AbstractConverter):
         return properties
 
     @classmethod
-    def _model_to_entity(cls, model: _DataNodeModel) -> DataNode:
-        data_node_properties = model.data_node_properties.copy()
-
+    def _deserialize_properties(cls, model: _DataNodeModel, properties: Dict) -> Dict:
         if model.storage_type == GenericDataNode.storage_type():
-            data_node_properties = cls.__deserialize_generic_dn_properties(data_node_properties)
+            properties = cls.__deserialize_generic_dn_properties(properties)
 
         if model.storage_type == JSONDataNode.storage_type():
-            data_node_properties = cls.__deserialize_json_dn_properties(data_node_properties)
+            properties = cls.__deserialize_json_dn_properties(properties)
 
         if model.storage_type == SQLDataNode.storage_type():
-            data_node_properties = cls.__deserialize_sql_dn_model_properties(data_node_properties)
+            properties = cls.__deserialize_sql_dn_model_properties(properties)
 
         if model.storage_type == MongoCollectionDataNode.storage_type():
-            data_node_properties = cls.__deserialize_mongo_collection_dn_model_properties(data_node_properties)
+            properties = cls.__deserialize_mongo_collection_dn_model_properties(properties)
 
-        if cls._EXPOSED_TYPE_KEY in data_node_properties.keys():
-            data_node_properties = cls.__deserialize_exposed_type(
-                data_node_properties, cls._EXPOSED_TYPE_KEY, cls._VALID_STRING_EXPOSED_TYPES
+        if cls._EXPOSED_TYPE_KEY in properties.keys():
+            properties = cls.__deserialize_exposed_type(
+                properties, cls._EXPOSED_TYPE_KEY, cls._VALID_STRING_EXPOSED_TYPES
             )
+        return properties
+
+    @classmethod
+    def _model_to_entity(cls, model: _DataNodeModel) -> DataNode:
+        data_node_properties = cls._deserialize_properties(model, model.data_node_properties.copy())
 
         validity_period = None
         if model.validity_seconds is not None and model.validity_days is not None:
             validity_period = timedelta(days=model.validity_days, seconds=model.validity_seconds)
 
         exp_date = datetime.fromisoformat(model.editor_expiration_date) if model.editor_expiration_date else None
-        datanode = DataNode._class_map()[model.storage_type](
+        return DataNode._class_map()[model.storage_type](
             config_id=model.config_id,
             scope=model.scope,
             id=model.id,
@@ -314,4 +321,3 @@ class _DataNodeConverter(_AbstractConverter):
             editor_expiration_date=exp_date,
             properties=data_node_properties,
         )
-        return _migrate_entity(datanode)

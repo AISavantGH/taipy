@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,15 +11,15 @@
 
 
 class ConfigIdMissingException(Exception):
-    def __init__(self):
+    def __init__(self) -> None:
         self.message = "Config id is missing."
 
 
 class ScenarioIdMissingException(Exception):
-    def __init__(self):
+    def __init__(self) -> None:
         self.message = "Scenario id is missing."
 
 
 class SequenceNameMissingException(Exception):
-    def __init__(self):
+    def __init__(self) -> None:
         self.message = "Sequence name is missing."

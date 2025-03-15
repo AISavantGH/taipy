@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -15,7 +15,7 @@ import typing as t
 _RE_PD_TYPE = re.compile(r"^([^\s\d\[]+)(\d+)(\[(.*,\s(\S+))\])?")
 
 
-def _get_date_col_str_name(columns: t.List[str], col: str) -> str:
+def _get_date_col_str_name(columns: t.Iterable[str], col: str) -> str:
     suffix = "_str"
     while col + suffix in columns:
         suffix += "_"

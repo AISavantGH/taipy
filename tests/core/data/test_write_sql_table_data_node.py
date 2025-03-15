@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
-from taipy.config.common.scope import Scope
+from taipy import Scope
 from taipy.core.data.sql_table import SQLTableDataNode
 
 
@@ -28,7 +28,7 @@ class MyCustomObject:
 
 
 class TestWriteSQLTableDataNode:
-    __pandas_properties = [
+    __sql_properties = [
         {
             "db_name": "taipy",
             "db_engine": "sqlite",
@@ -41,7 +41,7 @@ class TestWriteSQLTableDataNode:
     ]
 
     if util.find_spec("pyodbc"):
-        __pandas_properties.append(
+        __sql_properties.append(
             {
                 "db_username": "sa",
                 "db_password": "Passw0rd",
@@ -55,7 +55,7 @@ class TestWriteSQLTableDataNode:
         )
 
     if util.find_spec("pymysql"):
-        __pandas_properties.append(
+        __sql_properties.append(
             {
                 "db_username": "sa",
                 "db_password": "Passw0rd",
@@ -69,7 +69,7 @@ class TestWriteSQLTableDataNode:
         )
 
     if util.find_spec("psycopg2"):
-        __pandas_properties.append(
+        __sql_properties.append(
             {
                 "db_username": "sa",
                 "db_password": "Passw0rd",
@@ -82,19 +82,20 @@ class TestWriteSQLTableDataNode:
             },
         )
 
-    @pytest.mark.parametrize("pandas_properties", __pandas_properties)
-    def test_write_pandas(self, pandas_properties):
-        custom_properties = pandas_properties.copy()
+    @pytest.mark.parametrize("properties", __sql_properties)
+    def test_write_pandas(self, properties):
+        custom_properties = properties.copy()
         custom_properties.pop("db_extra_args")
         sql_table_dn = SQLTableDataNode("foo", Scope.SCENARIO, properties=custom_properties)
 
-        with patch("sqlalchemy.engine.Engine.connect") as engine_mock, patch(
-            "taipy.core.data.sql_table.SQLTableDataNode._create_table"
-        ) as _:
+        with (
+            patch("sqlalchemy.engine.Engine.connect") as engine_mock,
+            patch("taipy.core.data.sql_table.SQLTableDataNode._create_table") as _,
+        ):
             cursor_mock = engine_mock.return_value.__enter__.return_value
             cursor_mock.execute.side_effect = None
 
-            with patch("taipy.core.data.sql_table.SQLTableDataNode._SQLTableDataNode__insert_dataframe") as mck:
+            with patch("taipy.core.data.sql_table.SQLTableDataNode._insert_dataframe") as mck:
                 df = pd.DataFrame([{"a": 11, "b": 22, "c": 33}, {"a": 44, "b": 55, "c": 66}])
                 sql_table_dn.write(df)
                 assert mck.call_count == 1
@@ -112,20 +113,21 @@ class TestWriteSQLTableDataNode:
                 sql_table_dn.write(None)
                 assert mck.call_count == 5
 
-    @pytest.mark.parametrize("pandas_properties", __pandas_properties)
-    def test_write_numpy(self, pandas_properties):
-        custom_properties = pandas_properties.copy()
+    @pytest.mark.parametrize("properties", __sql_properties)
+    def test_write_numpy(self, properties):
+        custom_properties = properties.copy()
         custom_properties["exposed_type"] = "numpy"
         custom_properties.pop("db_extra_args")
         sql_table_dn = SQLTableDataNode("foo", Scope.SCENARIO, properties=custom_properties)
 
-        with patch("sqlalchemy.engine.Engine.connect") as engine_mock, patch(
-            "taipy.core.data.sql_table.SQLTableDataNode._create_table"
-        ) as _:
+        with (
+            patch("sqlalchemy.engine.Engine.connect") as engine_mock,
+            patch("taipy.core.data.sql_table.SQLTableDataNode._create_table") as _,
+        ):
             cursor_mock = engine_mock.return_value.__enter__.return_value
             cursor_mock.execute.side_effect = None
 
-            with patch("taipy.core.data.sql_table.SQLTableDataNode._SQLTableDataNode__insert_dataframe") as mck:
+            with patch("taipy.core.data.sql_table.SQLTableDataNode._insert_dataframe") as mck:
                 arr = np.array([[1], [2], [3], [4], [5]])
                 sql_table_dn.write(arr)
                 assert mck.call_count == 1
@@ -139,20 +141,21 @@ class TestWriteSQLTableDataNode:
                 sql_table_dn.write(None)
                 assert mck.call_count == 4
 
-    @pytest.mark.parametrize("pandas_properties", __pandas_properties)
-    def test_write_custom_exposed_type(self, pandas_properties):
-        custom_properties = pandas_properties.copy()
+    @pytest.mark.parametrize("properties", __sql_properties)
+    def test_write_custom_exposed_type(self, properties):
+        custom_properties = properties.copy()
         custom_properties["exposed_type"] = MyCustomObject
         custom_properties.pop("db_extra_args")
         sql_table_dn = SQLTableDataNode("foo", Scope.SCENARIO, properties=custom_properties)
 
-        with patch("sqlalchemy.engine.Engine.connect") as engine_mock, patch(
-            "taipy.core.data.sql_table.SQLTableDataNode._create_table"
-        ) as _:
+        with (
+            patch("sqlalchemy.engine.Engine.connect") as engine_mock,
+            patch("taipy.core.data.sql_table.SQLTableDataNode._create_table") as _,
+        ):
             cursor_mock = engine_mock.return_value.__enter__.return_value
             cursor_mock.execute.side_effect = None
 
-            with patch("taipy.core.data.sql_table.SQLTableDataNode._SQLTableDataNode__insert_dataframe") as mck:
+            with patch("taipy.core.data.sql_table.SQLTableDataNode._insert_dataframe") as mck:
                 custom_data = [
                     MyCustomObject(1, 2),
                     MyCustomObject(3, 4),

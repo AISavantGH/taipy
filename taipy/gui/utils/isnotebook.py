@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -17,7 +17,7 @@ def _is_in_notebook():  # pragma: no cover
         if not util.find_spec("IPython"):
             return False
 
-        from IPython import get_ipython
+        from IPython import get_ipython  # type: ignore[reportPrivateImportUsage]
 
         ipython = get_ipython()
 

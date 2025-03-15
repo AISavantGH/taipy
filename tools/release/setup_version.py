@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -77,12 +77,13 @@ def __setup_dev_version(version: Version, _base_path: str, name: Optional[str] =
     version.validate_suffix()
 
     name = f"{name}_VERSION" if name else "VERSION"
+
     print(f"{name}={version.dev_name}")  # noqa: T201
 
-    version.bump_ext_version()
 
+def bump_ext_version(version: Version, _base_path: str) -> None:
+    version.bump_ext_version()
     __write_version_to_path(_base_path, version)
-    print(f"NEW_{name}={version.dev_name}")  # noqa: T201
 
 
 def __setup_prod_version(version: Version, target_version: str, branch_name: str, name: str = None) -> None:
@@ -103,7 +104,7 @@ if __name__ == "__main__":
         [sys.argv[1]]
         if sys.argv[1] != "ALL"
         else [
-            f"taipy{os.sep}config",
+            f"taipy{os.sep}common",
             f"taipy{os.sep}core",
             f"taipy{os.sep}rest",
             f"taipy{os.sep}gui",

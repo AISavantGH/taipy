@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,31 +14,34 @@ import os
 import pytest
 
 from taipy.core.cycle._cycle_fs_repository import _CycleFSRepository
-from taipy.core.cycle._cycle_sql_repository import _CycleSQLRepository
 from taipy.core.cycle.cycle import Cycle, CycleId
 from taipy.core.exceptions import ModelNotFound
 
 
 class TestCycleRepositories:
-    @pytest.mark.parametrize("repo", [_CycleFSRepository, _CycleSQLRepository])
-    def test_save_and_load(self, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_save_and_load(self, cycle: Cycle):
+        repository = _CycleFSRepository()
         repository._save(cycle)
 
-        obj = repository._load(cycle.id)
-        assert isinstance(obj, Cycle)
+        loaded_cycle = repository._load(cycle.id)
+        assert isinstance(loaded_cycle, Cycle)
+        assert cycle._frequency == loaded_cycle._frequency
+        assert cycle._creation_date == loaded_cycle._creation_date
+        assert cycle._start_date == loaded_cycle._start_date
+        assert cycle._end_date == loaded_cycle._end_date
+        assert cycle._name == loaded_cycle._name
+        assert cycle.id == loaded_cycle.id
+        assert cycle._properties == loaded_cycle._properties
 
-    @pytest.mark.parametrize("repo", [_CycleFSRepository, _CycleSQLRepository])
-    def test_exists(self, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_exists(self, cycle):
+        repository = _CycleFSRepository()
         repository._save(cycle)
 
         assert repository._exists(cycle.id)
         assert not repository._exists("not-existed-cycle")
 
-    @pytest.mark.parametrize("repo", [_CycleFSRepository, _CycleSQLRepository])
-    def test_load_all(self, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_load_all(self, cycle):
+        repository = _CycleFSRepository()
         for i in range(10):
             cycle.id = CycleId(f"cycle-{i}")
             repository._save(cycle)
@@ -46,9 +49,8 @@ class TestCycleRepositories:
 
         assert len(data_nodes) == 10
 
-    @pytest.mark.parametrize("repo", [_CycleFSRepository, _CycleSQLRepository])
-    def test_load_all_with_filters(self, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_load_all_with_filters(self, cycle):
+        repository = _CycleFSRepository()
 
         for i in range(10):
             cycle.id = CycleId(f"cycle-{i}")
@@ -58,9 +60,8 @@ class TestCycleRepositories:
 
         assert len(objs) == 1
 
-    @pytest.mark.parametrize("repo", [_CycleSQLRepository])
-    def test_delete(self, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_delete(self, cycle):
+        repository = _CycleFSRepository()
         repository._save(cycle)
 
         repository._delete(cycle.id)
@@ -68,9 +69,8 @@ class TestCycleRepositories:
         with pytest.raises(ModelNotFound):
             repository._load(cycle.id)
 
-    @pytest.mark.parametrize("repo", [_CycleFSRepository, _CycleSQLRepository])
-    def test_delete_all(self, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_delete_all(self, cycle):
+        repository = _CycleFSRepository()
 
         for i in range(10):
             cycle.id = CycleId(f"cycle-{i}")
@@ -82,9 +82,8 @@ class TestCycleRepositories:
 
         assert len(repository._load_all()) == 0
 
-    @pytest.mark.parametrize("repo", [_CycleFSRepository, _CycleSQLRepository])
-    def test_delete_many(self, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_delete_many(self, cycle):
+        repository = _CycleFSRepository()
 
         for i in range(10):
             cycle.id = CycleId(f"cycle-{i}")
@@ -97,9 +96,8 @@ class TestCycleRepositories:
 
         assert len(repository._load_all()) == 7
 
-    @pytest.mark.parametrize("repo", [_CycleFSRepository, _CycleSQLRepository])
-    def test_search(self, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_search(self, cycle):
+        repository = _CycleFSRepository()
 
         for i in range(10):
             cycle.id = CycleId(f"cycle-{i}")
@@ -112,11 +110,10 @@ class TestCycleRepositories:
         assert len(objs) == 1
         assert isinstance(objs[0], Cycle)
 
-    @pytest.mark.parametrize("repo", [_CycleFSRepository, _CycleSQLRepository])
-    def test_export(self, tmpdir, cycle, repo, init_sql_repo):
-        repository = repo()
+    def test_export(self, tmpdir, cycle):
+        repository = _CycleFSRepository()
         repository._save(cycle)
 
         repository._export(cycle.id, tmpdir.strpath)
-        dir_path = repository.dir_path if repo == _CycleFSRepository else os.path.join(tmpdir.strpath, "cycle")
+        dir_path = repository.dir_path
         assert os.path.exists(os.path.join(dir_path, f"{cycle.id}.json"))

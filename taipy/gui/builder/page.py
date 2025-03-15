@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -20,21 +20,22 @@ class Page(_Renderer):
     """Page generator for the Builder API.
 
     This class is used to create a page created with the Builder API.<br/>
-    Instance of this class can be added to the application using `Gui.add_page()^`.
+    Instances of this class can be added to the application using `Gui.add_page()^`.
 
     This class is typically be used as a Python Context Manager to add the elements.<br/>
     Here is how you can create a single-page application, creating the elements with code:
-    ```py
+    ```python
     from taipy.gui import Gui
     from taipy.gui.builder import Page, button
 
     def do_something(state):
         pass
 
-    with Page() as page:
-        button(label="Press me", on_action=do_something)
+    if __name__ == "__main__":
+        with Page() as page:
+            button(label="Press me", on_action=do_something)
 
-    Gui(page).run()
+        Gui(page).run()
     ```
     """
 
@@ -42,9 +43,13 @@ class Page(_Renderer):
         """Initialize a new page.
 
         Arguments:
-            element (*Element*): An optional element, defined in the `taipy.gui.builder` module,
+            element (*Element*): An optional element, defined in the `taipy.gui.builder^` module,
                 that is created in the page.<br/>
                 The default creates a `part` where several elements can be stored.
+
+        The `Page` constructor supports the *style* parameter as explained in the
+        [section on Styling](../../../../../../userman/gui/styling/index.md#style-sheets) and in the
+        `(taipy.gui.Page.)set_style()^` method.
         """
         if element is None:
             element = _DefaultBlock()

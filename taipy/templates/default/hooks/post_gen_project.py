@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,10 +11,11 @@
 
 import os
 import shutil
+import subprocess
 
 
-def handle_services(use_rest, use_core):
-    if use_core or use_rest:
+def handle_services(use_rest, use_orchestrator):
+    if use_orchestrator or use_rest:
         # Write "import taipy as tp" at the third line of the import.txt file
         with open(os.path.join(os.getcwd(), "sections", "import.txt"), "r") as import_file:
             import_lines = import_file.readlines()
@@ -23,12 +24,12 @@ def handle_services(use_rest, use_core):
             import_file.writelines(import_lines)
 
     # Import the necessary services
-    if use_core and use_rest:
+    if use_orchestrator and use_rest:
         with open(os.path.join(os.getcwd(), "sections", "import.txt"), "a") as import_file:
-            import_file.write("from taipy import Core, Rest\n")
-    elif use_core:
+            import_file.write("from taipy import Orchestrator, Rest\n")
+    elif use_orchestrator:
         with open(os.path.join(os.getcwd(), "sections", "import.txt"), "a") as import_file:
-            import_file.write("from taipy import Core\n")
+            import_file.write("from taipy import Orchestrator\n")
     elif use_rest:
         with open(os.path.join(os.getcwd(), "sections", "import.txt"), "a") as import_file:
             import_file.write("from taipy import Rest\n")
@@ -38,11 +39,12 @@ def handle_services(use_rest, use_core):
         with open(os.path.join(os.getcwd(), "sections", "main.txt"), "a") as main_file:
             main_file.write("    rest = Rest()\n")
 
-    if use_core:
+    if use_orchestrator:
         # Create and submit the placeholder scenario
         with open(os.path.join(os.getcwd(), "sections", "main.txt"), "a") as main_file:
-            main_file.write("    core = Core()\n")
-            main_file.write("    core.run()\n")
+            main_file.write("    orchestrator = Orchestrator()\n")
+            if not use_rest:
+                main_file.write("    orchestrator.run()\n")
             main_file.write("    # #############################################################################\n")
             main_file.write("    # PLACEHOLDER: Create and submit your scenario here                           #\n")
             main_file.write("    #                                                                             #\n")
@@ -75,33 +77,29 @@ def handle_single_page_app():
         main_file.write("\n")
         main_file.write("    gui = Gui(page=page)\n")
 
+    with open(os.path.join(os.getcwd(), "sections", "import.txt"), "a") as import_file:
+        import_file.write("import taipy.gui.builder as tgb\n")
+
     handle_run_service()
 
     with open(os.path.join(os.getcwd(), "sections", "page_content.txt"), "a") as page_content_file:
         page_content_file.write(
-            '''
-page = """
-<center>
-<|navbar|lov={[("home", "Homepage")]}|>
-</center>
+            """
+with tgb.Page() as page:
+    tgb.navbar(lov="{[('home', 'Homepage')]}")
 
 """
-'''
         )
 
 
 def handle_multi_page_app(pages):
     for page_name in pages:
         os.mkdir(os.path.join(os.getcwd(), "pages", page_name))
-        with open(os.path.join(os.getcwd(), "pages", "page_example", "page_example.md"), "r") as page_md_file:
-            page_md_content = page_md_file.read()
-        page_md_content = page_md_content.replace("Page example", page_name.replace("_", " ").title())
-        with open(os.path.join(os.getcwd(), "pages", page_name, page_name + ".md"), "w") as page_md_file:
-            page_md_file.write(page_md_content)
 
         with open(os.path.join(os.getcwd(), "pages", "page_example", "page_example.py"), "r") as page_content_file:
             page_py_content = page_content_file.read()
         page_py_content = page_py_content.replace("page_example", page_name)
+        page_py_content = page_py_content.replace("Page example", page_name.replace("_", " ").title())
         with open(os.path.join(os.getcwd(), "pages", page_name, page_name + ".py"), "w") as page_content_file:
             page_content_file.write(page_py_content)
 
@@ -111,7 +109,7 @@ def handle_multi_page_app(pages):
 
     shutil.rmtree(os.path.join(os.getcwd(), "pages", "page_example"))
 
-    newline = ",\n\t"
+    newline = ",\n    "
     user_page_dict = newline.join(f'"{page_name}": {page_name}' for page_name in pages)
     page_dict = """
 pages = {
@@ -148,9 +146,30 @@ def generate_main_file():
         app_main_file.write(main_lines)
 
 
-use_core = "{{ cookiecutter.__core }}".upper()
+def initialize_as_git_project(project_dir: str) -> str:
+    if shutil.which("git") is None:
+        msg = "\nERROR: Git executable not found, skipping git initialisation"
+        return msg
+
+    try:
+        subprocess.run(
+            ["git", "init", "."],
+            cwd=project_dir,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+        msg = f"\nInitialized Git repository in {project_dir}"
+
+    except subprocess.CalledProcessError:
+        msg = f"\nERROR: Failed to initialise Git repository in {project_dir}"
+
+    return msg
+
+
+use_orchestrator = "{{ cookiecutter.__orchestrator }}".upper()
 use_rest = "{{ cookiecutter.__rest }}".upper()
-handle_services(use_rest in ["YES", "Y"], use_core in ["YES", "Y"])
+handle_services(use_rest in ["YES", "Y"], use_orchestrator in ["YES", "Y"])
 
 pages = "{{ cookiecutter.__pages }}".split(" ")
 # Remove empty string from pages list
@@ -165,9 +184,17 @@ generate_main_file()
 # Remove the sections folder
 shutil.rmtree(os.path.join(os.getcwd(), "sections"))
 
+# Initialize the project as a git repository
+git_init_message = ""
+if "{{ cookiecutter.__git }}".upper() in ["YES", "Y"]:
+    git_init_message = initialize_as_git_project(os.getcwd())
+else:
+    os.remove(os.path.join(os.getcwd(), ".gitignore"))
+
 main_file_name = "{{cookiecutter.__main_file}}.py"
 print(
     f"New Taipy application has been created at {os.path.join(os.getcwd())}"
+    f"{git_init_message}"
     f"\n\nTo start the application, change directory to the newly created folder:"
     f"\n\tcd {os.path.join(os.getcwd())}"
     f"\nand run the application as follows:"

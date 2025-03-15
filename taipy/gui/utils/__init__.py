@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -17,11 +17,13 @@ from ._attributes import (
     _setscopeattr,
     _setscopeattr_drill,
 )
+from ._lambda import _get_lambda_id
 from ._locals_context import _LocalsContext
 from ._map_dict import _MapDict
 from ._runtime_manager import _RuntimeManager
 from ._variable_directory import _variable_decode, _variable_encode, _VariableDirectory
-from .boolean import _is_boolean, _is_boolean_true
+from .boolean import _is_boolean, _is_true
+from .callable import _function_name, _is_function, _is_unnamed_function
 from .clientvarname import _get_broadcast_var_name, _get_client_var_name, _to_camel_case
 from .datatype import _get_data_type
 from .date import _date_to_string, _string_to_date
@@ -37,6 +39,7 @@ from .is_debugging import is_debugging
 from .is_port_open import _is_port_open
 from .isnotebook import _is_in_notebook
 from .types import (
+    _DoNotUpdate,
     _TaipyBase,
     _TaipyBool,
     _TaipyContent,
@@ -50,6 +53,7 @@ from .types import (
     _TaipyLov,
     _TaipyLovValue,
     _TaipyNumber,
+    _TaipyTime,
     _TaipyToJson,
 )
 from .varnamefromcontent import _varname_from_content

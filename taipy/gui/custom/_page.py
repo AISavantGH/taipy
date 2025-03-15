@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,7 +14,10 @@ from __future__ import annotations
 import typing as t
 from abc import ABC, abstractmethod
 
+import pandas as pd
+
 from ..page import Page as BasePage
+from ..utils import _TaipyData
 from ..utils.singleton import _Singleton
 
 
@@ -46,16 +49,18 @@ class ResourceHandler(ABC):
     User can implement this class to provide custom resources for the custom pages
     """
 
-    id: str = ""
+    rh_id: str = ""
+
+    data_layer_supported_types: t.Tuple[t.Type, ...] = (_TaipyData, pd.DataFrame, pd.Series)
 
     def __init__(self) -> None:
         _ExternalResourceHandlerManager().register(self)
 
     def get_id(self) -> str:
-        return self.id if id != "" else str(id(self))
+        return self.rh_id if self.rh_id != "" else str(id(self))
 
     @abstractmethod
-    def get_resources(self, path: str, taipy_resource_path: str) -> t.Any:
+    def get_resources(self, path: str, taipy_resource_path: str, base_url: str) -> t.Any:
         raise NotImplementedError
 
 

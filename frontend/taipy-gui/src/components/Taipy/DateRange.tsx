@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,21 +11,24 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import React, { useState, useEffect, useCallback } from "react";
-import Box from "@mui/material/Box";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
 import { DatePicker, DatePickerProps } from "@mui/x-date-pickers/DatePicker";
 import { BaseDateTimePickerSlotProps } from "@mui/x-date-pickers/DateTimePicker/shared";
 import { DateTimePicker, DateTimePickerProps } from "@mui/x-date-pickers/DateTimePicker";
+import { renderTimeViewClock } from '@mui/x-date-pickers/timeViewRenderers';
 import { isValid } from "date-fns";
 import { ErrorBoundary } from "react-error-boundary";
 
 import { createSendUpdateAction } from "../../context/taipyReducers";
-import { getSuffixedClassNames, TaipyActiveProps, TaipyChangeProps } from "./utils";
+import { getCssSize, getSuffixedClassNames, TaipyActiveProps, TaipyChangeProps, DateProps, getProps } from "./utils";
 import { dateToString, getDateTime, getTimeZonedDate } from "../../utils";
 import { useClassNames, useDispatch, useDynamicProperty, useFormatConfig, useModule } from "../../utils/hooks";
 import Field from "./Field";
 import ErrorFallback from "../../utils/ErrorBoundary";
+import { getComponentClassName } from "./TaipyStyle";
 
 interface DateRangeProps extends TaipyActiveProps, TaipyChangeProps {
     withTime?: boolean;
@@ -36,9 +39,11 @@ interface DateRangeProps extends TaipyActiveProps, TaipyChangeProps {
     editable?: boolean;
     labelStart?: string;
     labelEnd?: string;
+    separator?: string;
+    width?: string | number;
+    analogic?: boolean;
 }
 
-const boxSx = { display: "inline-flex", alignItems: "center", gap: "0.5em" };
 const textFieldProps = { textField: { margin: "dense" } } as BaseDateTimePickerSlotProps<Date>;
 
 const getRangeDateTime = (
@@ -50,7 +55,9 @@ const getRangeDateTime = (
     if (typeof json == "string") {
         try {
             dates = JSON.parse(json);
-        } catch (e) {}
+        } catch {
+            // too bad
+        }
     } else {
         dates = json as string[];
     }
@@ -60,34 +67,14 @@ const getRangeDateTime = (
     return [null, null];
 };
 
-interface DateProps {
-    maxDate?: unknown;
-    maxDateTime?: unknown;
-    maxTime?: unknown;
-    minDate?: unknown;
-    minDateTime?: unknown;
-    minTime?: unknown;
+const analogicRenderers = {
+    hours: renderTimeViewClock,
+    minutes: renderTimeViewClock,
+    seconds: renderTimeViewClock
 }
 
-const getProps = (p: DateProps, start: boolean, val: Date | null, withTime: boolean): DateProps => {
-    if (!val) {
-        return {};
-    }
-    const propName: keyof DateProps = withTime
-        ? start
-            ? "minDateTime"
-            : "maxDateTime"
-        : start
-        ? "minDate"
-        : "maxDate";
-    if (p[propName] == val) {
-        return p;
-    }
-    return { ...p, [propName]: val };
-};
-
 const DateRange = (props: DateRangeProps) => {
-    const { updateVarName, withTime = false, id, propagate = true } = props;
+    const { updateVarName, withTime = false, id, propagate = true, separator = "-", analogic = false } = props;
     const dispatch = useDispatch();
     const formatConfig = useFormatConfig();
     const tz = formatConfig.timeZone;
@@ -100,6 +87,8 @@ const DateRange = (props: DateRangeProps) => {
     const active = useDynamicProperty(props.active, props.defaultActive, true);
     const editable = useDynamicProperty(props.editable, props.defaultEditable, true);
     const hover = useDynamicProperty(props.hoverText, props.defaultHoverText, undefined);
+
+    const dateSx = useMemo(() => (props.width ? { maxWidth: "100%" } : undefined), [props.width]);
 
     const handleChange = useCallback(
         (v: Date | null, start: boolean) => {
@@ -150,7 +139,15 @@ const DateRange = (props: DateRangeProps) => {
     return (
         <ErrorBoundary FallbackComponent={ErrorFallback}>
             <Tooltip title={hover || ""}>
-                <Box id={id} className={className} sx={boxSx}>
+                <Stack
+                    id={id}
+                    className={`${className} ${getComponentClassName(props.children)}`}
+                    gap={0.5}
+                    direction="row"
+                    display="inline-flex"
+                    alignItems="center"
+                    width={props.width ? getCssSize(props.width) : undefined}
+                >
                     {editable ? (
                         withTime ? (
                             <>
@@ -166,8 +163,11 @@ const DateRange = (props: DateRangeProps) => {
                                     disabled={!active}
                                     slotProps={textFieldProps}
                                     label={props.labelStart}
+                                    format={props.format}
+                                    sx={dateSx}
+                                    viewRenderers={ analogic ? analogicRenderers : undefined }
                                 />
-                                -
+                                <Typography>{separator}</Typography>
                                 <DateTimePicker
                                     {...(endProps as DateTimePickerProps<Date>)}
                                     value={value[1]}
@@ -180,6 +180,9 @@ const DateRange = (props: DateRangeProps) => {
                                     disabled={!active}
                                     slotProps={textFieldProps}
                                     label={props.labelEnd}
+                                    format={props.format}
+                                    sx={dateSx}
+                                    viewRenderers={ analogic ? analogicRenderers : undefined }
                                 />
                             </>
                         ) : (
@@ -196,8 +199,10 @@ const DateRange = (props: DateRangeProps) => {
                                     disabled={!active}
                                     slotProps={textFieldProps}
                                     label={props.labelStart}
+                                    format={props.format}
+                                    sx={dateSx}
                                 />
-                                -
+                                <Typography>{separator}</Typography>
                                 <DatePicker
                                     {...(endProps as DatePickerProps<Date>)}
                                     value={value[1]}
@@ -210,6 +215,8 @@ const DateRange = (props: DateRangeProps) => {
                                     disabled={!active}
                                     slotProps={textFieldProps}
                                     label={props.labelEnd}
+                                    format={props.format}
+                                    sx={dateSx}
                                 />
                             </>
                         )
@@ -217,22 +224,25 @@ const DateRange = (props: DateRangeProps) => {
                         <>
                             <Field
                                 dataType="datetime"
-                                value={props.dates[0]}
+                                value={value[0] && isValid(value[0]) ? value[0].toISOString() : ""}
                                 format={props.format}
                                 id={id && id + "-field"}
                                 className={getSuffixedClassNames(className, "-text")}
+                                width={props.width && "100%"}
                             />
-                            -
+                            <Typography>{separator}</Typography>
                             <Field
                                 dataType="datetime"
-                                value={props.dates[1]}
+                                value={value[1] && isValid(value[1]) ? value[1].toISOString() : ""}
                                 format={props.format}
                                 id={id && id + "-field"}
                                 className={getSuffixedClassNames(className, "-text")}
+                                width={props.width && "100%"}
                             />
                         </>
                     )}
-                </Box>
+                    {props.children}
+                </Stack>
             </Tooltip>
         </ErrorBoundary>
     );

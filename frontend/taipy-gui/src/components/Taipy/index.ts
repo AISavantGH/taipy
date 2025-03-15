@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -12,7 +12,9 @@
  */
 
 import { ComponentType } from "react";
+
 import Button from "./Button";
+import Chat from "./Chat";
 import Chart from "./Chart";
 import DateRange from "./DateRange";
 import DateSelector from "./DateSelector";
@@ -28,57 +30,68 @@ import Login from "./Login";
 import Layout from "./Layout";
 import Link from "./Link";
 import MenuCtl from "./MenuCtl";
+import Metric from "./Metric";
 import NavBar from "./NavBar";
 import PageContent from "../pages/PageContent";
 import Pane from "./Pane";
 import Part from "./Part";
+import Progress from "./Progress";
 import Selector from "./Selector";
 import Slider from "./Slider";
 import StatusList from "./StatusList";
 import Table from "./Table";
+import TaipyAlert from "./Alert";
+import TaipyStyle from "./TaipyStyle";
 import Toggle from "./Toggle";
+import TimeSelector from "./TimeSelector";
 import TreeView from "./TreeView";
 
-const registeredComponents: Record<string, ComponentType> = {};
+const registeredComponents: Record<string, ComponentType<object>> = {};
 
 export const getRegisteredComponents = () => {
     if (registeredComponents.TreeView === undefined) {
         Object.entries({
             a: Link,
-            Button: Button,
-            Chart: Chart,
-            DateRange: DateRange,
-            DateSelector: DateSelector,
-            Dialog: Dialog,
-            Expandable: Expandable,
-            Field: Field,
-            FileDownload: FileDownload,
-            FileSelector: FileSelector,
-            Image: Image,
-            Indicator: Indicator,
-            Input: Input,
-            Login: Login,
-            Layout: Layout,
-            MenuCtl: MenuCtl,
-            NavBar: NavBar,
-            PageContent: PageContent,
-            Pane: Pane,
-            Part: Part,
-            Selector: Selector,
-            Slider: Slider,
+            Alert: TaipyAlert,
+            Button,
+            Chat,
+            Chart,
+            DateRange,
+            DateSelector,
+            Dialog,
+            Expandable,
+            Field,
+            FileDownload,
+            FileSelector,
+            Image,
+            Indicator,
+            Input,
+            Login,
+            Layout,
+            MenuCtl,
+            Metric,
+            NavBar,
+            PageContent,
+            Pane,
+            Part,
+            Selector,
+            Slider,
             Status: StatusList,
-            Table: Table,
-            Toggle: Toggle,
-            TreeView: TreeView,
-        }).forEach(([name, comp]) => (registeredComponents[name] = comp  as ComponentType));
+            Table,
+            TaipyStyle,
+            TimeSelector,
+            Toggle,
+            TreeView,
+            Progress,
+        }).forEach(([name, comp]) => (registeredComponents[name] = comp as ComponentType));
         if (window.taipyConfig?.extensions) {
-            Object.entries(window.taipyConfig.extensions).forEach(([libName, elts]) => {
-                if (elts && elts.length) {
+            Object.entries(window.taipyConfig.extensions).forEach(([libName, elements]) => {
+                if (elements && elements.length) {
                     const libParts = libName.split("/");
                     const modName = libParts.length > 2 ? libParts[2] : libName;
                     const mod: Record<string, ComponentType> = window[modName] as Record<string, ComponentType>;
                     if (mod) {
-                        elts.forEach((elt) => {
+                        elements.forEach((elt) => {
                             const comp = mod[elt];
                             if (comp) {
                                 registeredComponents[modName + "_" + elt] = comp;
@@ -93,5 +106,5 @@ export const getRegisteredComponents = () => {
             });
         }
     }
-    return registeredComponents;
+    return registeredComponents  as Record<string, ComponentType<object>>;
 };

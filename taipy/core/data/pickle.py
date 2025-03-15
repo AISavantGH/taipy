@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,16 +9,14 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-import os
 import pickle
 from datetime import datetime, timedelta
 from typing import Any, List, Optional, Set
 
-from taipy.config.common.scope import Scope
-
-from .._entity._reload import _self_reload
+from .._entity._reload import _Reloader
 from .._version._version_manager_factory import _VersionManagerFactory
-from ._abstract_file import _FileDataNodeMixin
+from ..common.scope import Scope
+from ._file_datanode_mixin import _FileDataNodeMixin
 from .data_node import DataNode
 from .data_node_id import DataNodeId, Edit
 
@@ -26,40 +24,30 @@ from .data_node_id import DataNodeId, Edit
 class PickleDataNode(DataNode, _FileDataNodeMixin):
     """Data Node stored as a pickle file.
 
-    Attributes:
-        config_id (str): Identifier of the data node configuration. It must be a valid Python
-            identifier.
-        scope (Scope^): The scope of this data node.
-        id (str): The unique identifier of this data node.
-        owner_id (str): The identifier of the owner (sequence_id, scenario_id, cycle_id) or
-            `None`.
-        parent_ids (Optional[Set[str]]): The identifiers of the parent tasks or `None`.
-        last_edit_date (datetime): The date and time of the last modification.
-        edits (List[Edit^]): The ordered list of edits for that job.
-        version (str): The string indicates the application version of the data node to instantiate. If not provided,
-            the current version is used.
-        validity_period (Optional[timedelta]): The duration implemented as a timedelta since the last edit date for
-            which the data node can be considered up-to-date. Once the validity period has passed, the data node is
-            considered stale and relevant tasks will run even if they are skippable (see the
-            [Task management page](../core/entities/task-mgt.md) for more details).
-            If _validity_period_ is set to `None`, the data node is always up-to-date.
-        edit_in_progress (bool): True if a task computing the data node has been submitted
-            and not completed yet. False otherwise.
-        editor_id (Optional[str]): The identifier of the user who is currently editing the data node.
-        editor_expiration_date (Optional[datetime]): The expiration date of the editor lock.
-        properties (dict[str, Any]): A dictionary of additional properties.
-            When creating a pickle data node, if the _properties_ dictionary contains a
-            _"default_data"_ entry, the data node is automatically written with the corresponding
-            _"default_data"_ value.
-            If the _properties_ dictionary contains a _"default_path"_ or _"path"_ entry, the data will be stored
-            using the corresponding value as the name of the pickle file.
+    The *properties* attribute can contain the following optional entries:
+
+    - *default_path* (`str`): The default path of the Pickle file used at the instantiation of the
+        data node.
+    - *default_data*: The default data of the data node. It is used at the data node instantiation
+        to write the data to the Pickle file.
+
+    ??? warning "To use with pickle-able data only"
+        PickleDataNode should be used only for "pickle-able" data.
+
+        Everything that's build up (recursively) from basic python types (dicts, lists,
+        primitives, objects, object references, even circular) can usually be pickled by default.
+
+        Things that are usually not pickle-able are, for example, sockets, file(handler)s,
+        database connections, custom data structure using in-memory references to Python IDs,
+        and so on.
+
+        Please refer to the
+        [pickle documentation](https://docs.python.org/3/library/pickle.html) for more information.
+
     """
 
     __STORAGE_TYPE = "pickle"
-    __PATH_KEY = "path"
-    __DEFAULT_PATH_KEY = "default_path"
-    __DEFAULT_DATA_KEY = "default_data"
-    __IS_GENERATED_KEY = "is_generated"
+
     _REQUIRED_PROPERTIES: List[str] = []
 
     def __init__(
@@ -77,19 +65,20 @@ class PickleDataNode(DataNode, _FileDataNodeMixin):
         editor_id: Optional[str] = None,
         editor_expiration_date: Optional[datetime] = None,
         properties=None,
-    ):
+    ) -> None:
+        self.id = id or self._new_id(config_id)
+
         if properties is None:
             properties = {}
-        default_value = properties.pop(self.__DEFAULT_DATA_KEY, None)
-        self._path = properties.get(self.__PATH_KEY, properties.get(self.__DEFAULT_PATH_KEY))
-        if self._path is not None:
-            properties[self.__PATH_KEY] = self._path
-        self._is_generated = properties.get(self.__IS_GENERATED_KEY, self._path is None)
-        properties[self.__IS_GENERATED_KEY] = self._is_generated
-        super().__init__(
+
+        default_value = properties.pop(self._DEFAULT_DATA_KEY, None)
+        _FileDataNodeMixin.__init__(self, properties)
+
+        DataNode.__init__(
+            self,
             config_id,
             scope,
-            id,
+            self.id,
             owner_id,
             parent_ids,
             last_edit_date,
@@ -101,58 +90,32 @@ class PickleDataNode(DataNode, _FileDataNodeMixin):
             editor_expiration_date,
             **properties,
         )
-        if self._path and ".data" in self._path:
-            self._path = self._migrate_path(self.storage_type(), self._path)
 
-        if self._path is None:
-            self._path = self._build_path(self.storage_type())
-
-        if default_value is not None and not os.path.exists(self._path):
-            self._write(default_value)
-            self._last_edit_date = datetime.now()
-            self._edits.append(
-                Edit(
-                    {
-                        "timestamp": self._last_edit_date,
-                        "writer_identifier": "TAIPY",
-                        "comments": "Default data written.",
-                    }
-                )
-            )
-        if not self._last_edit_date and os.path.exists(self._path):
-            self._last_edit_date = datetime.now()
+        with _Reloader():
+            self._write_default_data(default_value)
 
         self._TAIPY_PROPERTIES.update(
             {
-                self.__PATH_KEY,
-                self.__DEFAULT_PATH_KEY,
-                self.__DEFAULT_DATA_KEY,
-                self.__IS_GENERATED_KEY,
+                self._PATH_KEY,
+                self._DEFAULT_PATH_KEY,
+                self._DEFAULT_DATA_KEY,
+                self._IS_GENERATED_KEY,
             }
         )
 
     @classmethod
     def storage_type(cls) -> str:
+        """Return the storage type of the data node: "pickle"."""
         return cls.__STORAGE_TYPE
 
-    @property  # type: ignore
-    @_self_reload(DataNode._MANAGER_NAME)
-    def path(self) -> Any:
-        return self._path
-
-    @path.setter
-    def path(self, value):
-        self._path = value
-        self.properties[self.__PATH_KEY] = value
-        self.properties[self.__IS_GENERATED_KEY] = False
-
-    @property  # type: ignore
-    @_self_reload(DataNode._MANAGER_NAME)
-    def is_generated(self) -> bool:
-        return self._is_generated
-
     def _read(self):
-        with open(self._path, "rb") as pf:
+        return self._read_from_path()
+
+    def _read_from_path(self, path: Optional[str] = None, **read_kwargs) -> Any:
+        if path is None:
+            path = self._path
+
+        with open(path, "rb") as pf:
             return pickle.load(pf)
 
     def _write(self, data):

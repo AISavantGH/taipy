@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -15,13 +15,9 @@ import typing as t
 class Icon:
     """Small image in the User Interface.
 
-    Icons are typically used in controls like [button](../gui/viselements/button.md)
-    or items in a [menu](../gui/viselements/menu.md).
-
-    Attributes:
-        path (str): The path to the image file.
-        text (Optional[str]): The text associated to the image or None if there is none.
-        svg (Optional[bool]): True if the image is svg.
+    Icons are typically used in controls like
+    [button](../../../../../refmans/gui/viselements/generic/button.md)
+    or items in a [menu](../../../../../refmans/gui/viselements/generic/menu.md).
 
     If a text is associated to an icon, it is rendered by the visual elements that
     uses this Icon.
@@ -35,8 +31,8 @@ class Icon:
         self,
         path: str,
         text: t.Optional[str] = None,
-        light_path: t.Optional[bool] = None,
-        dark_path: t.Optional[bool] = None,
+        light_path: t.Optional[str] = None,
+        dark_path: t.Optional[str] = None,
     ) -> None:
         """Initialize a new Icon.
 
@@ -55,12 +51,12 @@ class Icon:
             light_path (Optional[str]): The path to the light theme image (fallback to *path* if not defined).
             dark_path (Optional[str]): The path to the dark theme image (fallback to *path* if not defined).
         """
-        self.path = path
-        self.text = text
+        self.path: str = path
+        self.text: t.Optional[str] = text
         if light_path is not None:
-            self.light_path = light_path
+            self.light_path: t.Optional[str] = light_path
         if dark_path is not None:
-            self.dark_path = dark_path
+            self.dark_path: t.Optional[str] = dark_path
 
     def _to_dict(self, a_dict: t.Optional[dict] = None) -> dict:
         if a_dict is None:

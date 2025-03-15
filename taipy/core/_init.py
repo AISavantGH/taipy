@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,6 +11,8 @@
 
 from ._core import Core
 from ._entity.submittable import Submittable
+from .common.frequency import Frequency
+from .common.scope import Scope
 from .cycle.cycle import Cycle
 from .cycle.cycle_id import CycleId
 from .data.data_node import DataNode
@@ -18,6 +20,7 @@ from .data.data_node_id import DataNodeId
 from .job.job import Job
 from .job.job_id import JobId
 from .job.status import Status
+from .orchestrator import Orchestrator
 from .scenario.scenario import Scenario
 from .scenario.scenario_id import ScenarioId
 from .sequence.sequence import Sequence
@@ -26,9 +29,9 @@ from .submission.submission import Submission
 from .submission.submission_id import SubmissionId
 from .submission.submission_status import SubmissionStatus
 from .taipy import (
+    can_create,
     cancel_job,
     clean_all_entities,
-    clean_all_entities_by_version,
     compare_scenarios,
     create_global_data_node,
     create_scenario,
@@ -36,7 +39,6 @@ from .taipy import (
     delete_job,
     delete_jobs,
     exists,
-    export_scenario,
     get,
     get_cycles,
     get_cycles_scenarios,

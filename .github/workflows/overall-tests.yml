@@ -7,15 +7,25 @@ on:
     branches: [ develop, dev/*, release/* ]
   workflow_dispatch:
 
+permissions:
+  pull-requests: write
+
+env:
+  NODE_OPTIONS: --max-old-space-size=4096
+
 jobs:
   partial-tests:
     uses: ./.github/workflows/partial-tests.yml
 
   coverage:
+    timeout-minutes: 50
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' }}
+
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.repo.full_name == github.event.pull_request.head.repo.full_name
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history to enable proper diff
 
       - uses: actions/setup-python@v5
         with:
@@ -31,27 +41,35 @@ jobs:
 
       - name: Pytest
         run: |
-          pipenv run pytest --cov=taipy --cov-report="xml:overall-coverage.xml" tests
+          python -m pip install xmltodict
+          pipenv run pytest --cov=taipy --cov-report=xml:${{ github.workspace }}/coverage.xml --cov-config=.coveragerc
 
-      - name: Coverage
-        uses: orgoro/coverage@v3.1
-        with:
-          coverageFile: overall-coverage.xml
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch base branch
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}
+
+
+      - name: Check total project coverage
+        run: |
+          python tools/coverage_check.py check-total --coverage-file ${{ github.workspace }}/coverage.xml --threshold 80
+
+      - name: Check pull request coverage
+        run: |
+          python tools/coverage_check.py check-changed --coverage-file ${{ github.workspace }}/coverage.xml --threshold 80 --base-branch ${{ github.event.pull_request.base.ref }}
 
   overall-tests:
-    needs: [coverage, partial-tests]
+    needs: [partial-tests]
     timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+        os: [ubuntu-latest, windows-latest, macos-13]
         pipfile-version: ['min', 'max']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{matrix.python-version}}
@@ -69,13 +87,13 @@ jobs:
           pipenv run pytest -m "not orchestrator_dispatcher and not standalone and not teste2e" tests
 
   intermittent-tests:
-    needs: [coverage, partial-tests]
+    needs: [partial-tests]
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+        os: [ubuntu-latest, windows-latest, macos-13]
         orchestrator: ['orchestrator_dispatcher', 'standalone']
         pipfile-version: ['min', 'max']
     runs-on: ${{ matrix.os }}

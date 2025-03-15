@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -18,9 +18,10 @@ import Tooltip from "@mui/material/Tooltip";
 import FileDownloadIco from "@mui/icons-material/FileDownload";
 
 import { useClassNames, useDispatch, useDynamicProperty, useModule } from "../../utils/hooks";
-import { noDisplayStyle, TaipyActiveProps } from "./utils";
+import { getCssSize, noDisplayStyle, TaipyActiveProps } from "./utils";
 import { createSendActionNameAction } from "../../context/taipyReducers";
 import { runXHR } from "../../utils/downloads";
+import { getComponentClassName } from "./TaipyStyle";
 
 interface FileDownloadProps extends TaipyActiveProps {
     content?: string;
@@ -33,6 +34,7 @@ interface FileDownloadProps extends TaipyActiveProps {
     defaultRender?: boolean;
     bypassPreview?: boolean;
     onAction?: string;
+    width?: string | number;
 }
 
 const FileDownload = (props: FileDownloadProps) => {
@@ -46,6 +48,8 @@ const FileDownload = (props: FileDownloadProps) => {
     const render = useDynamicProperty(props.render, props.defaultRender, true);
     const hover = useDynamicProperty(props.hoverText, props.defaultHoverText, undefined);
     const linkId = useMemo(() => (id || `tp-${Date.now()}-${Math.random()}`) + "-download-file", [id]);
+
+    const buttonSx = useMemo(() => (props.width ? { width: getCssSize(props.width) } : undefined), [props.width]);
 
     const [url, download] = useMemo(() => {
         const url = props.content || props.defaultContent || "";
@@ -93,15 +97,23 @@ const FileDownload = (props: FileDownloadProps) => {
     const aProps = useMemo(() => (bypassPreview ? {} : { target: "_blank", rel: "noreferrer" }), [bypassPreview]);
 
     return render ? (
-        <label htmlFor={linkId} className={className}>
+        <label htmlFor={linkId} className={`${className} ${getComponentClassName(props.children)}`}>
             <a style={noDisplayStyle} id={linkId} download={download} {...aProps} ref={aRef} />
             {auto ? null : (
                 <Tooltip title={hover || ""}>
-                    <Button id={id} variant="outlined" aria-label="download" disabled={!active} onClick={clickHandler}>
+                    <Button
+                        id={id}
+                        variant="outlined"
+                        aria-label="download"
+                        disabled={!active}
+                        onClick={clickHandler}
+                        sx={buttonSx}
+                    >
                         <FileDownloadIco /> {label || defaultLabel}
                     </Button>
                 </Tooltip>
             )}
+            {props.children}
         </label>
     ) : null;
 };

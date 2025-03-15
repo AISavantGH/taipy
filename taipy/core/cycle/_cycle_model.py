@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,29 +12,13 @@
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from sqlalchemy import JSON, Column, Enum, String, Table
-
-from taipy.config.common.frequency import Frequency
-
 from .._repository._base_taipy_model import _BaseModel
-from .._repository.db._sql_base_model import mapper_registry
+from ..common.frequency import Frequency
 from .cycle_id import CycleId
 
 
-@mapper_registry.mapped
 @dataclass
 class _CycleModel(_BaseModel):
-    __table__ = Table(
-        "cycle",
-        mapper_registry.metadata,
-        Column("id", String, primary_key=True),
-        Column("name", String),
-        Column("frequency", Enum(Frequency)),
-        Column("properties", JSON),
-        Column("creation_date", String),
-        Column("start_date", String),
-        Column("end_date", String),
-    )
     id: CycleId
     name: str
     frequency: Frequency

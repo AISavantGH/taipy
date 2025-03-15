@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -19,6 +19,9 @@ const UPLOAD_URL = "/taipy-uploads";
 
 export const uploadFile = (
     varName: string,
+    context: string | undefined,
+    onAction: string | undefined,
+    uploadData: string | undefined,
     files: FileList,
     progressCallback: (val: number) => void,
     id: string,
@@ -35,6 +38,6 @@ export const uploadFile = (
             }
         };
         worker.onerror = (evt: ErrorEvent) => reject(evt);
-        worker.postMessage({ files: files, uploadUrl: uploadUrl, varName: varName, id: id } as FileUploadData);
+        worker.postMessage({ files, uploadUrl, varName, context, onAction, uploadData, id } as FileUploadData);
     });
 };

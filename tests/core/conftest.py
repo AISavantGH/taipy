@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -21,15 +21,13 @@ import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import close_all_sessions
 
-from taipy.config.checker._checker import _Checker
-from taipy.config.common.frequency import Frequency
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
-from taipy.core._core import Core
+from taipy.common.config import Config
+from taipy.common.config.checker._checker import _Checker
 from taipy.core._orchestrator._orchestrator_factory import _OrchestratorFactory
-from taipy.core._repository.db._sql_connection import _SQLConnection
 from taipy.core._version._version import _Version
 from taipy.core._version._version_manager_factory import _VersionManagerFactory
+from taipy.core.common.frequency import Frequency
+from taipy.core.common.scope import Scope
 from taipy.core.config import (
     _ConfigIdChecker,
     _CoreSectionChecker,
@@ -44,11 +42,12 @@ from taipy.core.cycle.cycle import Cycle
 from taipy.core.cycle.cycle_id import CycleId
 from taipy.core.data._data_manager_factory import _DataManagerFactory
 from taipy.core.data._data_model import _DataNodeModel
-from taipy.core.data.in_memory import InMemoryDataNode
+from taipy.core.data.in_memory import DataNodeId, InMemoryDataNode
 from taipy.core.job._job_manager_factory import _JobManagerFactory
 from taipy.core.job.job import Job
 from taipy.core.job.job_id import JobId
 from taipy.core.notification.notifier import Notifier
+from taipy.core.orchestrator import Orchestrator
 from taipy.core.scenario._scenario_manager_factory import _ScenarioManagerFactory
 from taipy.core.scenario._scenario_model import _ScenarioModel
 from taipy.core.scenario.scenario import Scenario
@@ -59,7 +58,7 @@ from taipy.core.sequence.sequence_id import SequenceId
 from taipy.core.submission._submission_manager_factory import _SubmissionManagerFactory
 from taipy.core.submission.submission import Submission
 from taipy.core.task._task_manager_factory import _TaskManagerFactory
-from taipy.core.task.task import Task
+from taipy.core.task.task import Task, TaskId
 
 current_time = datetime.now()
 
@@ -176,15 +175,6 @@ def default_multi_sheet_data_frame():
     }
 
 
-@pytest.fixture(scope="session", autouse=True)
-def cleanup_files():
-    yield
-
-    for path in [".data", ".my_data", "user_data", ".taipy"]:
-        if os.path.exists(path):
-            shutil.rmtree(path, ignore_errors=True)
-
-
 @pytest.fixture(scope="function")
 def current_datetime():
     return current_time
@@ -197,7 +187,7 @@ def scenario(cycle):
         set(),
         {},
         set(),
-        ScenarioId("sc_id"),
+        ScenarioId("SCENARIO_scenario_id"),
         current_time,
         is_primary=False,
         tags={"foo"},
@@ -208,7 +198,9 @@ def scenario(cycle):
 
 @pytest.fixture(scope="function")
 def data_node():
-    return InMemoryDataNode("data_node_config_id", Scope.SCENARIO, version="random_version_number")
+    return InMemoryDataNode(
+        "data_node_config_id", Scope.SCENARIO, version="random_version_number", id=DataNodeId("DATANODE_data_node_id")
+    )
 
 
 @pytest.fixture(scope="function")
@@ -234,7 +226,7 @@ def data_node_model():
 @pytest.fixture(scope="function")
 def task(data_node):
     dn = InMemoryDataNode("dn_config_id", Scope.SCENARIO, version="random_version_number")
-    return Task("task_config_id", {}, print, [data_node], [dn])
+    return Task("task_config_id", {}, print, [data_node], [dn], TaskId("TASK_task_id"))
 
 
 @pytest.fixture(scope="function")
@@ -264,7 +256,7 @@ def cycle():
         start_date=example_date,
         end_date=example_date,
         name="cc",
-        id=CycleId("cc_id"),
+        id=CycleId("CYCLE_cycle_id"),
     )
 
 
@@ -314,6 +306,19 @@ def tmp_sqlite(tmpdir_factory):
     return os.path.join(fn.strpath, "test.db")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_files():
+    for path in [".data", ".my_data", "user_data", ".taipy"]:
+        if os.path.exists(path):
+            shutil.rmtree(path, ignore_errors=True)
+
+    yield
+
+    for path in [".data", ".my_data", "user_data", ".taipy"]:
+        if os.path.exists(path):
+            shutil.rmtree(path, ignore_errors=True)
+
+
 @pytest.fixture(scope="function", autouse=True)
 def clean_repository(init_config, init_managers, init_orchestrator, init_notifier, clean_argparser):
     clean_argparser()
@@ -345,13 +350,12 @@ def init_config(reset_configuration_singleton, inject_core_sections):
         _Checker.add_checker(_CoreSectionChecker)
         _Checker.add_checker(_DataNodeConfigChecker)
         _Checker.add_checker(_JobConfigChecker)
-        # We don't need to add _MigrationConfigChecker because it is run only when the Core service is run.
         _Checker.add_checker(_TaskConfigChecker)
         _Checker.add_checker(_ScenarioConfigChecker)
 
         Config.configure_core(read_entity_retry=0)
-        Core._is_running = False
-        Core._version_is_initialized = False
+        Orchestrator._is_running = False
+        Orchestrator._version_is_initialized = False
 
     return _init_config
 
@@ -396,18 +400,3 @@ def init_notifier():
 @pytest.fixture
 def sql_engine():
     return create_engine("sqlite:///:memory:")
-
-
-@pytest.fixture
-def init_sql_repo(tmp_sqlite, init_managers):
-    Config.configure_core(repository_type="sql", repository_properties={"db_location": tmp_sqlite})
-
-    # Clean SQLite database
-    if _SQLConnection._connection:
-        _SQLConnection._connection.close()
-        _SQLConnection._connection = None
-    _SQLConnection.init_db()
-
-    init_managers()
-
-    return tmp_sqlite

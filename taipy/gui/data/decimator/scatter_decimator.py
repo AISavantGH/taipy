@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,7 +13,7 @@ import typing as t
 
 import numpy as np
 
-from ..utils import Decimator
+from .base import Decimator
 
 
 class ScatterDecimator(Decimator):
@@ -34,6 +34,8 @@ class ScatterDecimator(Decimator):
         max_overlap_points: t.Optional[int] = None,
         threshold: t.Optional[int] = None,
         zoom: t.Optional[bool] = True,
+        # on_decimate: t.Optional[t.Callable] = None,
+        # apply_decimator: t.Optional[t.Callable] = None,
     ):
         """Initialize a new `ScatterDecimator`.
 
@@ -48,12 +50,16 @@ class ScatterDecimator(Decimator):
             zoom (Optional[bool]): set to True to reapply the decimation
                 when zoom or re-layout events are triggered.
         """
+        # on_decimate (Optional[Callable]): an user-defined function that is executed when the decimator
+        #     is found during runtime. This function can be used to provide custom decimation logic.
+        # apply_decimator (Optional[Callable]): an user-defined function that is executed when the decimator
+        #     is applied to modify the data.
         super().__init__(threshold, zoom)
         binning_ratio = binning_ratio if binning_ratio is not None else 1
         self._binning_ratio = binning_ratio if binning_ratio > 0 else 1
         self._max_overlap_points = max_overlap_points if max_overlap_points is not None else 3
 
-    def decimate(self, data: np.ndarray, payload: t.Dict[str, t.Any]) -> np.ndarray:
+    def _decimate(self, data: np.ndarray, payload: t.Dict[str, t.Any]) -> np.ndarray:
         n_rows = data.shape[0]
         mask = np.empty(n_rows, dtype=bool)
         width = payload.get("width", None)
@@ -75,7 +81,7 @@ class ScatterDecimator(Decimator):
         grid_shape = (grid_x + 1, grid_y + 1)
         if len(data[0]) == 3:
             grid_z = grid_x
-            grid_shape = (grid_x + 1, grid_y + 1, grid_z + 1)  # type: ignore
+            grid_shape = (grid_x + 1, grid_y + 1, grid_z + 1)  # type: ignore[assignment]
             z_col = data[:, 2]
             min_z: float = np.amin(z_col)
             max_z: float = np.amax(z_col)

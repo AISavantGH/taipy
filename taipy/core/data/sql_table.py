@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -10,14 +10,13 @@
 # specific language governing permissions and limitations under the License.
 
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
 import pandas as pd
 from sqlalchemy import MetaData, Table
 
-from taipy.config.common.scope import Scope
-
 from .._version._version_manager_factory import _VersionManagerFactory
+from ..common.scope import Scope
 from ..exceptions.exceptions import MissingRequiredProperty
 from ._abstract_sql import _AbstractSQLDataNode
 from .data_node_id import DataNodeId, Edit
@@ -25,46 +24,27 @@ from .data_node_id import DataNodeId, Edit
 
 class SQLTableDataNode(_AbstractSQLDataNode):
     """Data Node stored in a SQL table.
+    The *properties* attribute must contain the following mandatory entries:
 
-    Attributes:
-        config_id (str): Identifier of the data node configuration. It must be a valid Python
-            identifier.
-        scope (Scope^): The scope of this data node.
-        id (str): The unique identifier of this data node.
-        owner_id (str): The identifier of the owner (sequence_id, scenario_id, cycle_id) or
-            None.
-        parent_ids (Optional[Set[str]]): The identifiers of the parent tasks or `None`.
-        last_edit_date (datetime): The date and time of the last modification.
-        edits (List[Edit^]): The ordered list of edits for that job.
-        version (str): The string indicates the application version of the data node to instantiate. If not provided,
-            the current version is used.
-        validity_period (Optional[timedelta]): The duration implemented as a timedelta since the last edit date for
-            which the data node can be considered up-to-date. Once the validity period has passed, the data node is
-            considered stale and relevant tasks will run even if they are skippable (see the
-            [Task management page](../core/entities/task-mgt.md) for more details).
-            If _validity_period_ is set to `None`, the data node is always up-to-date.
-        edit_in_progress (bool): True if a task computing the data node has been submitted
-            and not completed yet. False otherwise.
-        editor_id (Optional[str]): The identifier of the user who is currently editing the data node.
-        editor_expiration_date (Optional[datetime]): The expiration date of the editor lock.
-        properties (dict[str, Any]): A dictionary of additional properties. Note that the
-            _properties_ parameter must at least contain an entry for _"db_name"_, _"db_engine"_, _"table_name"_:
+    - *has_header* (`bool`): If True, indicates that the SQL query has a header.
+    - *exposed_type* (`str`): The exposed type of the data read from SQL query. The default value is `pandas`.
+    - *db_name* (`str`): The database name, or the name of the SQLite database file.
+    - *db_engine* (`str`): The database engine. Possible values are *sqlite*, *mssql*,
+        *mysql*, or *postgresql*.
+    - *table_name* (`str`): The name of the SQL table.
+    - *db_username* (`str`): The database username.
+    - *db_password* (`str`): The database password.
+    - *db_host* (`str`): The database host. The default value is *localhost*.
+    - *db_port* (`int`): The database port. The default value is 1433.
+    - *db_driver* (`str`): The database driver.
 
-            - _"db_name"_ `(str)`: The database name, or the name of the SQLite database file.
-            - _"db_engine"_ `(str)`: The database engine. For now, the accepted values are _"sqlite"_, _"mssql"_,
-                _"mysql"_, or _"postgresql"_.
-            - _"table_name"_ `(str)`: The name of the SQL table.
-            - _"db_username"_ `(str)`: The database username.
-            - _"db_password"_ `(str)`: The database password.
-            - _"db_host"_ `(str)`: The database host. The default value is _"localhost"_.
-            - _"db_port"_ `(int)`: The database port. The default value is 1433.
-            - _"db_driver"_ `(str)`: The database driver.
-            - _"sqlite_folder_path"_ (str): The path to the folder that contains SQLite file. The default value
-                is the current working folder.
-            - _"sqlite_file_extension"_ (str): The filename extension of the SQLite file. The default value is ".db".
-            - _"db_extra_args"_ `(Dict[str, Any])`: A dictionary of additional arguments to be passed into database
-                connection string.
-            - _"exposed_type"_: The exposed type of the data read from SQL query. The default value is `pandas`.
+    The *properties* attribute can also contain the following optional entries:
+
+    - *sqlite_folder_path* (str): The path to the folder that contains SQLite file. The default value
+        is the current working folder.
+    - *sqlite_file_extension* (str): The filename extension of the SQLite file. The default value is ".db".
+    - *db_extra_args* (`Dict[str, Any]`): A dictionary of additional arguments to be passed into database
+        connection string.
     """
 
     __STORAGE_TYPE = "sql_table"
@@ -85,7 +65,7 @@ class SQLTableDataNode(_AbstractSQLDataNode):
         editor_id: Optional[str] = None,
         editor_expiration_date: Optional[datetime] = None,
         properties: Optional[Dict] = None,
-    ):
+    ) -> None:
         if properties is None:
             properties = {}
         if properties.get(self.__TABLE_KEY) is None:
@@ -109,6 +89,7 @@ class SQLTableDataNode(_AbstractSQLDataNode):
 
     @classmethod
     def storage_type(cls) -> str:
+        """Return the storage type of the data node: `sql_table`."""
         return cls.__STORAGE_TYPE
 
     def _get_base_read_query(self) -> str:
@@ -122,7 +103,7 @@ class SQLTableDataNode(_AbstractSQLDataNode):
 
     def __insert_data(self, data, engine, connection, delete_table: bool = False) -> None:
         table = self._create_table(engine)
-        self.__insert_dataframe(
+        self._insert_dataframe(
             self._convert_data_to_dataframe(self.properties[self._EXPOSED_TYPE_PROPERTY], data),
             table,
             connection,
@@ -137,7 +118,7 @@ class SQLTableDataNode(_AbstractSQLDataNode):
         )
 
     @classmethod
-    def __insert_dicts(cls, data: List[Dict], table: Any, connection: Any, delete_table: bool) -> None:
+    def _insert_dicts(cls, data: List[Dict], table: Any, connection: Any, delete_table: bool) -> None:
         """
         This method will insert the data contained in a list of dictionaries into a table. The query itself is handled
         by SQLAlchemy, so it's only needed to pass the correct data type.
@@ -146,8 +127,14 @@ class SQLTableDataNode(_AbstractSQLDataNode):
         connection.execute(table.insert(), data)
 
     @classmethod
-    def __insert_dataframe(cls, df: pd.DataFrame, table: Any, connection: Any, delete_table: bool) -> None:
-        cls.__insert_dicts(df.to_dict(orient="records"), table, connection, delete_table)
+    def _insert_dataframe(
+        cls, df: Union[pd.DataFrame, pd.Series], table: Any, connection: Any, delete_table: bool
+    ) -> None:
+        if isinstance(df, pd.Series):
+            data = [df.to_dict()]
+        elif isinstance(df, pd.DataFrame):
+            data = df.to_dict(orient="records")
+        cls._insert_dicts(data, table, connection, delete_table)
 
     @classmethod
     def __delete_all_rows(cls, table: Any, connection: Any, delete_table: bool) -> None:

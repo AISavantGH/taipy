@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -21,6 +21,15 @@ import * as React from "react";
  * @returns The backend-generated variable name.
  */
 export declare const getUpdateVar: (updateVars: string, name: string) => string | undefined;
+
+/**
+ * Appends a suffix to the class names.
+ *
+ * @param names - The class names.
+ * @param suffix - The suffix to append.
+ * @returns The new list of class names.
+ */
+export declare const getSuffixedClassNames: (names: string | undefined, suffix: string) => string;
 
 export interface TaipyActiveProps extends TaipyDynamicProps, TaipyHoverProps {
     defaultActive?: boolean;
@@ -116,6 +125,67 @@ export interface TableProps extends TaipyPaginatedTableProps {
     autoLoading?: boolean;
 }
 export declare const Table: (props: TableProps) => JSX.Element;
+
+export interface FilterColumnDesc extends ColumnDesc {
+    params?: number[];
+}
+export interface FilterDesc {
+    col: string;
+    action: string;
+    value: string | number | boolean | Date;
+    type: string;
+    params?: number[];
+}
+export interface TableFilterProps {
+    fieldHeader?: string;
+    fieldHeaderTooltip?: string;
+    columns: Record<string, FilterColumnDesc>;
+    colsOrder?: Array<string>;
+    onValidate: (data: Array<FilterDesc>) => void;
+    appliedFilters?: Array<FilterDesc>;
+    className?: string;
+    filteredCount: number;
+}
+export declare const TableFilter: (props: TableFilterProps) => JSX.Element;
+
+export interface SortColumnDesc extends ColumnDesc {
+    params?: number[];
+}
+export interface SortDesc {
+    col: string;
+    order: boolean;
+    params?: number[];
+}
+
+export interface TableSortProps {
+    fieldHeader?: string;
+    fieldHeaderTooltip?: string;
+    columns: Record<string, SortColumnDesc>;
+    colsOrder?: Array<string>;
+    onValidate: (data: Array<SortDesc>) => void;
+    appliedSorts?: Array<SortDesc>;
+    className?: string;
+}
+
+export declare const TableSort: (props: TableSortProps) => JSX.Element;
+
+export interface FileSelectorProps extends TaipyActiveProps {
+    onAction?: string;
+    defaultLabel?: string;
+    label?: string;
+    multiple?: boolean;
+    selectionType?: string;
+    extensions?: string;
+    dropMessage?: string;
+    notify?: boolean;
+    width?: string | number;
+    icon?: React.ReactNode;
+    withBorder?: boolean;
+    onUploadAction?: string;
+    uploadData?: string;
+}
+
+export declare const FileSelector: (props: FileSelectorProps) => JSX.Element;
 
 export declare const Router: () => JSX.Element;
 
@@ -272,8 +342,10 @@ export declare const createRequestUpdateAction: (
     id: string | undefined,
     context: string | undefined,
     names: string[],
-    forceRefresh?: boolean
+    forceRefresh?: boolean,
+    stateContext?: Record<string, unknown>
 ) => Action;
+
 /**
  * A column description as received by the backend.
  */
@@ -288,23 +360,36 @@ export interface ColumnDesc {
     title?: string;
     /** The order of the column. */
     index: number;
-    /** The width. */
+    /** The column width. */
     width?: number | string;
-    /** If set to true, the column should not be editable. */
+    /** If true, the column cannot be edited. */
     notEditable?: boolean;
-    /** The column name that would hold the css classname to apply to the cell. */
-    style?: string;
+    /** The name of the column that holds the CSS classname to
+     *  apply to the cells. */
+    className?: string;
+    /** The name of the column that holds the tooltip to
+     *  show on the cells. */
+    tooltip?: string;
+    /** The name of the column that holds the formatted value to
+     *  show on the cells. */
+    formatFn?: string;
     /** The value that would replace a NaN value. */
     nanValue?: string;
-    /** The TimeZone identifier used if the type is Date. */
+    /** The TimeZone identifier used if the type is `date`. */
     tz?: string;
     /** The flag that allows filtering. */
     filter?: boolean;
-    /** The identifier for the aggregation function. */
+    /** The name of the aggregation function. */
     apply?: string;
-    /** The flag that would allow the user to aggregate the column. */
+    /** The flag that allows the user to aggregate the column. */
     groupBy?: boolean;
     widthHint?: number;
+    /** The list of values that can be used on edit. */
+    lov?: string[];
+    /** If true the user can enter any value besides the lov values. */
+    freeLov?: boolean;
+    /** If false, the column cannot be sorted */
+    sortable?: boolean;
 }
 /**
  * A cell value type.
@@ -342,6 +427,16 @@ export declare const Context: React.Context<Store>;
  * @returns The latest updated value.
  */
 export declare const useDynamicProperty: <T>(value: T, defaultValue: T, defaultStatic: T) => T;
+/**
+ * A React hook to manage classNames (dynamic and static).
+ * cf. useDynamicProperty
+ *
+ * @param libClassName - The default static className.
+ * @param dynamicClassName - The bound className.
+ * @param className - The default user set className.
+ * @returns The complete list of applicable classNames.
+ */
+export declare const useClassNames: (libClassName?: string, dynamicClassName?: string, className?: string) => string;
 /**
  * A React hook to manage a dynamic json property.
  *
@@ -385,3 +480,12 @@ export declare const useDispatch: () => React.Dispatch<Action>;
  * @returns The page module.
  */
 export declare const useModule: () => string | undefined;
+
+/**
+ * A function that retrieves the dynamic className associated
+ * to an instance of component through the style property
+ *
+ * @param children - The react children of the component
+ * @returns The associated className.
+ */
+export declare const getComponentClassName: (children: React.ReactNode) => string;

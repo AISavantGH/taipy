@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,16 +11,16 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import { CSSProperties, MouseEvent } from "react";
+import { MouseEvent, ReactNode } from "react";
+import { SxProps } from "@mui/material";
 
-export interface TaipyActiveProps extends TaipyDynamicProps, TaipyHoverProps {
-    defaultActive?: boolean;
-    active?: boolean;
-}
-
-export interface TaipyHoverProps {
-    hoverText?: string;
-    defaultHoverText?: string;
+export interface TaipyBaseProps {
+    id?: string;
+    libClassName?: string;
+    className?: string;
+    dynamicClassName?: string;
+    privateClassName?: string;
+    children?: ReactNode;
 }
 
 interface TaipyDynamicProps extends TaipyBaseProps {
@@ -29,11 +29,18 @@ interface TaipyDynamicProps extends TaipyBaseProps {
     updateVars?: string;
 }
 
-export interface TaipyBaseProps {
-    id?: string;
-    libClassName?: string;
-    className?: string;
-    dynamicClassName?: string;
+export interface TaipyHoverProps {
+    hoverText?: string;
+    defaultHoverText?: string;
+}
+
+export interface TaipyActiveProps extends TaipyDynamicProps, TaipyHoverProps {
+    defaultActive?: boolean;
+    active?: boolean;
+}
+
+export interface TaipyLabelProps {
+    label?: string;
 }
 
 export interface TaipyMultiSelectProps {
@@ -48,15 +55,30 @@ export interface TaipyInputProps extends TaipyActiveProps, TaipyChangeProps, Tai
     type: string;
     value: string;
     defaultValue?: string;
+    step?: number;
+    defaultStep?: number;
+    stepMultiplier?: number;
+    defaultStepMultiplier?: number;
+    min?: number;
+    defaultMin?: number;
+    max?: number;
+    defaultMax?: number;
     changeDelay?: number;
     onAction?: string;
     actionKeys?: string;
+    actionOnBlur?: boolean;
     multiline?: boolean;
     linesShown?: number;
+    width?: string | number;
 }
 
-export interface TaipyLabelProps {
-    label?: string;
+export interface DateProps {
+    maxDate?: unknown;
+    maxDateTime?: unknown;
+    maxTime?: unknown;
+    minDate?: unknown;
+    minDateTime?: unknown;
+    minTime?: unknown;
 }
 
 export const getArrayValue = <T>(arr: T[], idx: number, defVal?: T): T | undefined => {
@@ -94,20 +116,55 @@ export const noDisplayStyle = { display: "none" };
 const RE_ONLY_NUMBERS = /^\d+(\.\d*)?$/;
 export const getCssSize = (val: string | number) => {
     if (typeof val === "number") {
-        return "" + val + "px";
+        return `${val}px`;
     } else {
-        val = val.trim();
+        val = `${val}`.trim();
         if (RE_ONLY_NUMBERS.test(val)) {
-            return val + "px";
+            return `${val}px`;
         }
+        return val;
     }
-    return val;
 };
 
+/**
+ * Appends a suffix to the class names.
+ *
+ * @param names - The class names.
+ * @param suffix - The suffix to append.
+ * @returns The new list of class names.
+ */
 export const getSuffixedClassNames = (names: string | undefined, suffix: string) =>
     (names || "")
         .split(/\s+/)
         .map((n) => n + suffix)
         .join(" ");
 
-export const emptyStyle = {} as CSSProperties;
+export const disableColor = <T>(color: T, disabled: boolean) => (disabled ? ("disabled" as T) : color);
+
+export const getProps = (p: DateProps, start: boolean, val: Date | null, withTime: boolean): DateProps => {
+    if (!val) {
+        return {};
+    }
+    const propName: keyof DateProps = withTime
+        ? start
+            ? "minDateTime"
+            : "maxDateTime"
+        : start
+        ? "minDate"
+        : "maxDate";
+    if (p[propName] == val) {
+        return p;
+    }
+    return { ...p, [propName]: val };
+};
+
+export const expandSx = (sx: SxProps | undefined, ...partials: (SxProps | undefined)[]) => {
+    const start = sx || {};
+    const end = partials.reduce((prevSx: SxProps, partialSx) => {
+        if (partialSx) {
+            return { ...prevSx, ...partialSx } as SxProps;
+        }
+        return prevSx;
+    }, start);
+    return start === end ? sx : end;
+};

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -18,26 +18,24 @@ from .utils import _run_template
 
 def test_scenario_management_with_toml_config(tmpdir):
     cookiecutter(
-        template="taipy/templates/scenario-management",
+        template="taipy/templates/sdm",
         output_dir=tmpdir,
         no_input=True,
         extra_context={
-            "Application root folder name": "foo_app",
+            "Application root folder": "foo_app",
             "Application main Python file": "main.py",
             "Application title": "bar",
-            "Does the application use TOML Config?": "yes",
+            "With TOML Config?": "yes",
         },
     )
 
     assert os.listdir(tmpdir) == ["foo_app"]
-    assert (
-        os.listdir(os.path.join(tmpdir, "foo_app")).sort()
-        == ["requirements.txt", "main.py", "algos", "config", "pages"].sort()
+    assert sorted(os.listdir(os.path.join(tmpdir, "foo_app"))) == sorted(
+        ["requirements.txt", ".taipyignore", "main.py", "algos", "config", "pages"]
     )
 
-    assert (
-        os.listdir(os.path.join(tmpdir, "foo_app", "config")).sort()
-        == ["__init__.py", "config.py", "config.toml"].sort()
+    assert sorted(os.listdir(os.path.join(tmpdir, "foo_app", "config"))) == sorted(
+        ["__init__.py", "config.py", "config.toml"]
     )
     with open(os.path.join(tmpdir, "foo_app", "config", "config.py")) as config_file:
         assert 'Config.load("config/config.toml")' in config_file.read()
@@ -52,24 +50,23 @@ def test_scenario_management_with_toml_config(tmpdir):
 
 def test_scenario_management_without_toml_config(tmpdir):
     cookiecutter(
-        template="taipy/templates/scenario-management",
+        template="taipy/templates/sdm",
         output_dir=tmpdir,
         no_input=True,
         extra_context={
-            "Application root folder name": "foo_app",
+            "Application root folder": "foo_app",
             "Application main Python file": "main.py",
             "Application title": "bar",
-            "Does the application use TOML Config?": "no",
+            "With TOML Config?": "no",
         },
     )
 
     assert os.listdir(tmpdir) == ["foo_app"]
-    assert (
-        os.listdir(os.path.join(tmpdir, "foo_app")).sort()
-        == ["requirements.txt", "main.py", "algos", "config", "pages"].sort()
+    assert sorted(os.listdir(os.path.join(tmpdir, "foo_app"))) == sorted(
+        ["requirements.txt", ".taipyignore", "main.py", "algos", "config", "pages"]
     )
 
-    assert os.listdir(os.path.join(tmpdir, "foo_app", "config")).sort() == ["__init__.py", "config.py"].sort()
+    assert sorted(os.listdir(os.path.join(tmpdir, "foo_app", "config"))) == sorted(["__init__.py", "config.py"])
     with open(os.path.join(tmpdir, "foo_app", "config", "config.py")) as config_file:
         config_content = config_file.read()
         assert 'Config.load("config/config.toml")' not in config_content
@@ -80,3 +77,20 @@ def test_scenario_management_without_toml_config(tmpdir):
 
     # Assert the message when the application is run successfully is in the stdout
     assert "[Taipy][INFO]  * Server starting on" in stdout
+
+
+def test_with_git(tmpdir):
+    cookiecutter(
+        template="taipy/templates/sdm",
+        output_dir=str(tmpdir),
+        no_input=True,
+        extra_context={
+            "Application root folder": "foo_app",
+            "With a new Git repository?": "y",
+        },
+    )
+
+    assert os.listdir(tmpdir) == ["foo_app"]
+    assert sorted(os.listdir(os.path.join(tmpdir, "foo_app"))) == sorted(
+        ["requirements.txt", "main.py", ".git", ".gitignore", ".taipyignore", "algos", "config", "pages"]
+    )

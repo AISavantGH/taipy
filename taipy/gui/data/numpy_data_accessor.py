@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,29 +14,20 @@ import typing as t
 import numpy
 import pandas as pd
 
-from ..gui import Gui
-from .data_format import _DataFormat
-from .pandas_data_accessor import _PandasDataAccessor
+from .pandas_based_data_accessor import _PandasBasedDataAccessor
 
 
-class _NumpyDataAccessor(_PandasDataAccessor):
+class _NumpyDataAccessor(_PandasBasedDataAccessor):
     __types = (numpy.ndarray,)
 
     @staticmethod
-    def get_supported_classes() -> t.List[str]:
-        return [t.__name__ for t in _NumpyDataAccessor.__types]  # type: ignore
+    def get_supported_classes() -> t.List[t.Type]:
+        return list(_NumpyDataAccessor.__types)
 
-    def _get_dataframe(self, value: t.Any) -> pd.DataFrame:
+    def to_pandas(self, value: t.Any) -> pd.DataFrame:
         return pd.DataFrame(value)
 
-    def get_col_types(self, var_name: str, value: t.Any) -> t.Union[None, t.Dict[str, str]]:  # type: ignore
-        if isinstance(value, _NumpyDataAccessor.__types):  # type: ignore
-            return super().get_col_types(var_name, self._get_dataframe(value))
-        return None
-
-    def get_data(  # noqa: C901
-        self, guiApp: Gui, var_name: str, value: t.Any, payload: t.Dict[str, t.Any], data_format: _DataFormat
-    ) -> t.Dict[str, t.Any]:
-        if isinstance(value, _NumpyDataAccessor.__types):  # type: ignore
-            return super().get_data(guiApp, var_name, self._get_dataframe(value), payload, data_format)
-        return {}
+    def _from_pandas(self, value: pd.DataFrame, data_type: t.Type):
+        if data_type is numpy.ndarray:
+            return value.to_numpy()
+        return self._get_pandas_accessor()._from_pandas(value, data_type)

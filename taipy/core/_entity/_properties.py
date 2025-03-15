@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,6 +11,9 @@
 
 from collections import UserDict
 
+from taipy.common.config.common._template_handler import _TemplateHandler as _tpl
+
+from ..common._utils import _normalize_path
 from ..notification import EventOperation, Notifier, _make_event
 
 
@@ -24,8 +27,9 @@ class _Properties(UserDict):
         self._pending_deletions = set()
 
     def __setitem__(self, key, value):
+        if key == "path":
+            value = _normalize_path(value)
         super(_Properties, self).__setitem__(key, value)
-        from ... import core as tp
 
         if hasattr(self, "_entity_owner"):
             event = _make_event(
@@ -35,7 +39,7 @@ class _Properties(UserDict):
                 attribute_value=value,
             )
             if not self._entity_owner._is_in_context:
-                tp.set(self._entity_owner)
+                self._set_entity_owner(self._entity_owner)
                 Notifier.publish(event)
             else:
                 if key in self._pending_deletions:
@@ -44,13 +48,10 @@ class _Properties(UserDict):
                 self._entity_owner._in_context_attributes_changed_collector.append(event)
 
     def __getitem__(self, key):
-        from taipy.config.common._template_handler import _TemplateHandler as _tpl
-
         return _tpl._replace_templates(super(_Properties, self).__getitem__(key))
 
     def __delitem__(self, key):
         super(_Properties, self).__delitem__(key)
-        from ... import core as tp
 
         if hasattr(self, "_entity_owner"):
             event = _make_event(
@@ -60,9 +61,14 @@ class _Properties(UserDict):
                 attribute_value=None,
             )
             if not self._entity_owner._is_in_context:
-                tp.set(self._entity_owner)
+                self._set_entity_owner(self._entity_owner)
                 Notifier.publish(event)
             else:
                 self._pending_changes.pop(key, None)
                 self._pending_deletions.add(key)
                 self._entity_owner._in_context_attributes_changed_collector.append(event)
+
+    def _set_entity_owner(self, entity_owner):
+        from ... import core as tp
+
+        tp.set(entity_owner)

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,8 +13,8 @@ from copy import copy
 
 import pytest
 
-from taipy.config.checker.issue_collector import IssueCollector
-from taipy.config.config import Config
+from taipy.common.config import Config
+from taipy.common.config.checker.issue_collector import IssueCollector
 from taipy.core.config import TaskConfig
 from taipy.core.config.data_node_config import DataNodeConfig
 
@@ -48,6 +48,40 @@ class TestTaskConfigChecker:
             Config.check()
         assert len(Config._collector.errors) == 1
         assert len(Config._collector.warnings) == 2
+
+    def test_check_if_input_output_id_is_used_in_properties(self, caplog):
+        config = Config._applied_config
+        Config._compile_configs()
+        input_dn_config = DataNodeConfig("input_dn")
+        test_dn_config = DataNodeConfig("test")
+
+        config._sections[TaskConfig.name]["new"] = copy(config._sections[TaskConfig.name]["default"])
+        config._sections[TaskConfig.name]["new"].function = print
+        config._sections[TaskConfig.name]["new"]._properties["test"] = "test"
+        config._sections[TaskConfig.name]["new"]._inputs = [input_dn_config]
+        Config._collector = IssueCollector()
+        Config.check()
+        assert len(Config._collector.errors) == 0
+
+        config._sections[TaskConfig.name]["new"]._inputs = [test_dn_config]
+        with pytest.raises(SystemExit):
+            Config._collector = IssueCollector()
+            Config.check()
+        assert len(Config._collector.errors) == 1
+        assert (
+            "The id of the DataNodeConfig `test` is overlapping with the property `test` of TaskConfig `new`."
+            in caplog.text
+        )
+
+        config._sections[TaskConfig.name]["new"]._outputs = [test_dn_config]
+        with pytest.raises(SystemExit):
+            Config._collector = IssueCollector()
+            Config.check()
+        assert len(Config._collector.errors) == 2
+        assert (
+            "The id of the DataNodeConfig `test` is overlapping with the property `test` of TaskConfig `new`."
+            in caplog.text
+        )
 
     def test_check_config_id_is_different_from_all_task_properties(self, caplog):
         Config._collector = IssueCollector()
@@ -277,3 +311,51 @@ class TestTaskConfigChecker:
         Config.check()
         assert len(Config._collector.errors) == 0
         assert len(Config._collector.warnings) == 2
+
+    def test_check_required_property(self, caplog):
+        prev_required_properties = TaskConfig._REQUIRED_PROPERTIES.copy()
+
+        TaskConfig._REQUIRED_PROPERTIES = {"task_type": ["required_key_1", "required_key_2"]}
+
+        config = Config._applied_config
+        Config._compile_configs()
+
+        config._sections[TaskConfig.name]["default"]._outputs = "bar"
+        Config._collector = IssueCollector()
+        Config.check()
+        assert len(Config._collector.errors) == 0
+        assert len(Config._collector.warnings) == 0
+
+        config._sections[TaskConfig.name]["new"] = config._sections[TaskConfig.name]["default"]
+        config._sections[TaskConfig.name]["new"].id = "new"
+        config._sections[TaskConfig.name]["new"].function = print
+        config._sections[TaskConfig.name]["new"]._outputs = [DataNodeConfig("bar")]
+        config._sections[TaskConfig.name]["new"]._properties = {"task_type": True, "required_key_1": None}
+        with pytest.raises(SystemExit):
+            Config._collector = IssueCollector()
+            Config.check()
+        assert len(Config._collector.errors) == 2
+        expected_error_message_1 = (
+            "TaskConfig `new` is either missing the required property `required_key_1` or the value is set to None."
+        )
+        assert expected_error_message_1 in caplog.text
+        expected_error_message_2 = (
+            "TaskConfig `new` is either missing the required property `required_key_2` or the value is set to None."
+        )
+        assert expected_error_message_2 in caplog.text
+        assert len(Config._collector.warnings) == 1
+
+        TaskConfig._REQUIRED_PROPERTIES = prev_required_properties
+
+        config._sections[TaskConfig.name]["new"] = config._sections[TaskConfig.name]["default"]
+        config._sections[TaskConfig.name]["new"].id = "new"
+        config._sections[TaskConfig.name]["new"].function = print
+        config._sections[TaskConfig.name]["new"]._outputs = [DataNodeConfig("bar")]
+        config._sections[TaskConfig.name]["new"]._properties = {
+            "task_type": True,
+            "required_key_1": "sthg",
+            "required_key_2": "sthg",
+        }
+        Config._collector = IssueCollector()
+        Config.check()
+        assert len(Config._collector.errors) == 0

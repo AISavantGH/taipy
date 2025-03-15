@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,7 +12,7 @@
 from flask import request
 from flask_restful import Resource
 
-from taipy.config.config import Config
+from taipy.common.config import Config
 from taipy.core import Scenario
 from taipy.core.exceptions.exceptions import NonExistingScenario, NonExistingScenarioConfig
 from taipy.core.scenario._scenario_manager_factory import _ScenarioManagerFactory
@@ -81,10 +81,11 @@ class ScenarioResource(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.get(
-                    "http://localhost:5000/api/v1/scenarios/SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c")
-                    print(response)
-                    print(response.json())
+                response = requests.get(
+                    "http://localhost:5000/api/v1/scenarios/SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c"
+                )
+                print(response)
+                print(response.json())
                 ```
                 `SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c` is the value of the  *scenario_id* parameter. It
                 represents the identifier of the Cycle we want to retrieve.
@@ -117,7 +118,7 @@ class ScenarioResource(Resource):
             When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_READER` role.
 
-        parameters:
+        arguments:
         - in: path
           name: scenario_id
           schema:
@@ -166,10 +167,11 @@ class ScenarioResource(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.delete(
-                    "http://localhost:5000/api/v1/scenarios/SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c")
-                    print(response)
-                    print(response.json())
+                response = requests.delete(
+                    "http://localhost:5000/api/v1/scenarios/SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c"
+                )
+                print(response)
+                print(response.json())
                 ```
                 `SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c` is the value of the *scenario_id* parameter. It
                 represents the identifier of the Scenario we want to delete.
@@ -191,7 +193,7 @@ class ScenarioResource(Resource):
             When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_EDITOR` role.
 
-      parameters:
+      arguments:
         - in: path
           name: scenario_id
           schema:
@@ -275,9 +277,9 @@ class ScenarioList(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.get("http://localhost:5000/api/v1/scenarios")
-                    print(response)
-                    print(response.json())
+                response = requests.get("http://localhost:5000/api/v1/scenarios")
+                print(response)
+                print(response.json())
                 ```
 
                 In case of success here is an output example:
@@ -361,9 +363,9 @@ class ScenarioList(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.post("http://localhost:5000/api/v1/scenarios?config_id=my_scenario_config")
-                    print(response)
-                    print(response.json())
+                response = requests.post("http://localhost:5000/api/v1/scenarios?config_id=my_scenario_config")
+                print(response)
+                print(response.json())
                 ```
                 In this example the *config_id* value ("my_scenario_config") is given as parameter directly in the
                 url. A corresponding `ScenarioConfig^` must exist and must have been configured before.
@@ -391,7 +393,7 @@ class ScenarioList(Resource):
             When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_EDITOR` role.
 
-      parameters:
+      arguments:
         - in: query
           name: config_id
           schema:
@@ -476,11 +478,12 @@ class ScenarioExecutor(Resource):
             === "Python"
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
-                    import requests
-                        response = requests.post(
-                        "http://localhost:5000/api/v1/scenarios/submit/SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c")
-                        print(response)
-                        print(response.json())
+                import requests
+                response = requests.post(
+                    "http://localhost:5000/api/v1/scenarios/submit/SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c"
+                )
+                print(response)
+                print(response.json())
                 ```
                 `SCENARIO_63cb358d-5834-4d73-84e4-a6343df5e08c` is the value of the *scenario_id* parameter. It
                 represents the identifier of the Scenario we want to submit.
@@ -495,7 +498,7 @@ class ScenarioExecutor(Resource):
             When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_EXECUTOR` role.
 
-      parameters:
+      arguments:
         - in: path
           name: scenario_id
           schema:

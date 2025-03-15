@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,16 +9,14 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-import json
-from pathlib import Path
 from typing import Callable, Iterable, Optional
 from unittest import mock
 from unittest.mock import ANY
 
 import pytest
 
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
+from taipy import Scope
+from taipy.common.config import Config
 from taipy.core._orchestrator._orchestrator import _Orchestrator
 from taipy.core._version._version_manager import _VersionManager
 from taipy.core.common import _utils
@@ -73,14 +71,15 @@ def test_raise_sequence_does_not_belong_to_scenario():
 def __init():
     input_dn = InMemoryDataNode("foo", Scope.SCENARIO)
     output_dn = InMemoryDataNode("foo", Scope.SCENARIO)
-    task = Task("task", {}, print, [input_dn], [output_dn], TaskId("task_id"))
+    task = Task("task", {}, print, [input_dn], [output_dn], TaskId("Task_task_id"))
+    _TaskManager._set(task)
     scenario = Scenario("scenario", {task}, {}, set())
     _ScenarioManager._set(scenario)
     return scenario, task
 
 
 def test_set_and_get_sequence_no_existing_sequence():
-    scenario, task = __init()
+    scenario, _ = __init()
     sequence_name_1 = "p1"
     sequence_id_1 = SequenceId(f"SEQUENCE_{sequence_name_1}_{scenario.id}")
     sequence_name_2 = "p2"
@@ -133,6 +132,19 @@ def test_set_and_get():
     assert _SequenceManager._get(sequence_2).id == sequence_2.id
     assert len(_SequenceManager._get(sequence_2).tasks) == 1
     assert _TaskManager._get(task.id).id == task.id
+
+
+def test_task_parent_id_set_only_when_create():
+    scenario, task = __init()
+    sequence_name_1 = "p1"
+
+    with mock.patch("taipy.core.task._task_manager._TaskManager._set") as mck:
+        scenario.add_sequences({sequence_name_1: [task]})
+        mck.assert_called_once()
+
+    with mock.patch("taipy.core.task._task_manager._TaskManager._set") as mck:
+        scenario.sequences[sequence_name_1]
+        mck.assert_not_called()
 
 
 def test_get_all_on_multiple_versions_environment():
@@ -193,6 +205,10 @@ def test_is_submittable():
     task = Task("task", {}, print, [dn])
     scenario = Scenario("scenario", {task}, {}, set())
     _ScenarioManager._set(scenario)
+
+    rc = _SequenceManager._is_submittable("some_sequence")
+    assert not rc
+    assert "Entity 'some_sequence' does not exist in the repository." in rc.reasons
 
     scenario.add_sequences({"sequence": [task]})
     sequence = scenario.sequences["sequence"]
@@ -403,7 +419,7 @@ def test_get_or_create_data():
     scenario.add_sequences({"by_6": list(scenario.tasks.values())})
     sequence = scenario.sequences["by_6"]
 
-    assert sequence.name == "by_6"
+    assert sequence.properties["name"] == "by_6"
 
     assert len(_DataManager._get_all()) == 3
     assert len(_TaskManager._get_all()) == 2
@@ -433,16 +449,13 @@ def test_get_or_create_data():
         sequence.WRONG.write(7)
 
 
-def notify1(*args, **kwargs):
-    ...
+def notify1(*args, **kwargs): ...
 
 
-def notify2(*args, **kwargs):
-    ...
+def notify2(*args, **kwargs): ...
 
 
-def notify_multi_param(*args, **kwargs):
-    ...
+def notify_multi_param(*args, **kwargs): ...
 
 
 def test_sequence_notification_subscribe(mocker):
@@ -471,7 +484,11 @@ def test_sequence_notification_subscribe(mocker):
     notify_2.__module__ = "notify_2"
     # Mocking this because NotifyMock is a class that does not loads correctly when getting the sequence
     # from the storage.
-    mocker.patch.object(_utils, "_load_fct", side_effect=[notify_1, notify_1, notify_2, notify_2, notify_2, notify_2])
+    mocker.patch.object(
+        _utils,
+        "_load_fct",
+        side_effect=[notify_1, notify_1, notify_2, notify_2, notify_2, notify_2],
+    )
 
     # test subscription
     callback = mock.MagicMock()
@@ -717,54 +734,6 @@ def test_exists():
     assert not _SequenceManager._exists("SEQUENCE_sequence_SCENARIO_scenario_id")
     assert _SequenceManager._exists("SEQUENCE_sequence_SCENARIO_scenario")
     assert _SequenceManager._exists(scenario.sequences["sequence"])
-
-
-def test_export(tmpdir_factory):
-    path = tmpdir_factory.mktemp("data")
-    task = Task("task", {}, print, id=TaskId("task_id"))
-    scenario = Scenario(
-        "scenario",
-        {task},
-        {},
-        set(),
-        version="1.0",
-        sequences={"sequence_1": {}, "sequence_2": {"tasks": [task], "properties": {"xyz": "acb"}}},
-    )
-    _TaskManager._set(task)
-    _ScenarioManager._set(scenario)
-
-    sequence_1 = scenario.sequences["sequence_1"]
-    sequence_2 = scenario.sequences["sequence_2"]
-
-    _SequenceManager._export(sequence_1.id, Path(path))
-    export_sequence_json_file_path = f"{path}/sequences/{sequence_1.id}.json"
-    with open(export_sequence_json_file_path, "rb") as f:
-        sequence_json_file = json.load(f)
-        expected_json = {
-            "id": sequence_1.id,
-            "owner_id": scenario.id,
-            "parent_ids": [scenario.id],
-            "name": "sequence_1",
-            "tasks": [],
-            "properties": {},
-            "subscribers": [],
-        }
-        assert expected_json == sequence_json_file
-
-    _SequenceManager._export(sequence_2.id, Path(path))
-    export_sequence_json_file_path = f"{path}/sequences/{sequence_2.id}.json"
-    with open(export_sequence_json_file_path, "rb") as f:
-        sequence_json_file = json.load(f)
-        expected_json = {
-            "id": sequence_2.id,
-            "owner_id": scenario.id,
-            "parent_ids": [scenario.id],
-            "name": "sequence_2",
-            "tasks": [task.id],
-            "properties": {"xyz": "acb"},
-            "subscribers": [],
-        }
-        assert expected_json == sequence_json_file
 
 
 def test_hard_delete_one_single_sequence_with_scenario_data_nodes():

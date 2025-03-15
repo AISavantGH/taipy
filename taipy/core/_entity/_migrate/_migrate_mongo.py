@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -17,7 +17,7 @@ from typing import Dict
 import bson
 import pymongo
 
-from taipy.logger._taipy_logger import _TaipyLogger
+from taipy.common.logger._taipy_logger import _TaipyLogger
 
 from ._utils import _migrate
 
@@ -151,11 +151,11 @@ def _migrate_mongo_entities(
     """Migrate entities from mongodb to the current version.
 
     Args:
-        hostname (str, optional): The hostname of the mongodb. Defaults to "localhost".
-        port (int, optional): The port of the mongodb. Defaults to 27017.
-        user (str, optional): The username of the mongodb. Defaults to "".
-        password (str, optional): The password of the mongodb. Defaults to "".
-        backup (bool, optional): Whether to backup the entities before migrating. Defaults to True.
+        hostname (Optional[str]): The hostname of the mongodb. Defaults to "localhost".
+        port (Optional[int]): The port of the mongodb. Defaults to 27017.
+        user (Optional[str]): The username of the mongodb. Defaults to "".
+        password (Optional[str]): The password of the mongodb. Defaults to "".
+        backup (Optional[bool]): Whether to backup the entities before migrating. Defaults to True.
 
     Returns:
         bool: True if the migration was successful, False otherwise.

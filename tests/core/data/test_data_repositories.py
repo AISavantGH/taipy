@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,30 +14,42 @@ import os
 import pytest
 
 from taipy.core.data._data_fs_repository import _DataFSRepository
-from taipy.core.data._data_sql_repository import _DataSQLRepository
 from taipy.core.data.data_node import DataNode, DataNodeId
 from taipy.core.exceptions import ModelNotFound
 
 
 class TestDataNodeRepository:
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_save_and_load(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_save_and_load(self, data_node: DataNode, repo):
         repository = repo()
         repository._save(data_node)
 
-        obj = repository._load(data_node.id)
-        assert isinstance(obj, DataNode)
+        loaded_data_node = repository._load(data_node.id)
+        assert isinstance(loaded_data_node, DataNode)
+        assert data_node.id == loaded_data_node.id
+        assert data_node._config_id == loaded_data_node._config_id
+        assert data_node._owner_id == loaded_data_node._owner_id
+        assert data_node._parent_ids == loaded_data_node._parent_ids
+        assert data_node._scope == loaded_data_node._scope
+        assert data_node._last_edit_date == loaded_data_node._last_edit_date
+        assert data_node._edit_in_progress == loaded_data_node._edit_in_progress
+        assert data_node._version == loaded_data_node._version
+        assert data_node._validity_period == loaded_data_node._validity_period
+        assert data_node._editor_id == loaded_data_node._editor_id
+        assert data_node._editor_expiration_date == loaded_data_node._editor_expiration_date
+        assert data_node._edits == loaded_data_node._edits
+        assert data_node._properties == loaded_data_node._properties
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_exists(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_exists(self, data_node, repo):
         repository = repo()
         repository._save(data_node)
 
         assert repository._exists(data_node.id)
         assert not repository._exists("not-existed-data-node")
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_load_all(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_load_all(self, data_node, repo):
         repository = repo()
         for i in range(10):
             data_node.id = DataNodeId(f"data_node-{i}")
@@ -46,8 +58,8 @@ class TestDataNodeRepository:
 
         assert len(data_nodes) == 10
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_load_all_with_filters(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_load_all_with_filters(self, data_node, repo):
         repository = repo()
 
         for i in range(10):
@@ -58,8 +70,8 @@ class TestDataNodeRepository:
 
         assert len(objs) == 1
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_delete(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_delete(self, data_node, repo):
         repository = repo()
         repository._save(data_node)
 
@@ -68,8 +80,8 @@ class TestDataNodeRepository:
         with pytest.raises(ModelNotFound):
             repository._load(data_node.id)
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_delete_all(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_delete_all(self, data_node, repo):
         repository = repo()
 
         for i in range(10):
@@ -82,8 +94,8 @@ class TestDataNodeRepository:
 
         assert len(repository._load_all()) == 0
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_delete_many(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_delete_many(self, data_node, repo):
         repository = repo()
 
         for i in range(10):
@@ -97,8 +109,8 @@ class TestDataNodeRepository:
 
         assert len(repository._load_all()) == 7
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_delete_by(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_delete_by(self, data_node, repo):
         repository = repo()
 
         # Create 5 entities with version 1.0 and 5 entities with version 2.0
@@ -113,8 +125,8 @@ class TestDataNodeRepository:
 
         assert len(repository._load_all()) == 5
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_search(self, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_search(self, data_node, repo):
         repository = repo()
 
         for i in range(10):
@@ -134,8 +146,8 @@ class TestDataNodeRepository:
 
         assert repository._search("owner_id", "task-2", filters=[{"version": "non_existed_version"}]) == []
 
-    @pytest.mark.parametrize("repo", [_DataFSRepository, _DataSQLRepository])
-    def test_export(self, tmpdir, data_node, repo, init_sql_repo):
+    @pytest.mark.parametrize("repo", [_DataFSRepository])
+    def test_export(self, tmpdir, data_node, repo):
         repository = repo()
         repository._save(data_node)
 

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -28,6 +28,12 @@ def test_number_md_2(gui: Gui, test_client, helpers):
         'type="number"',
         "value={_TpN_tpec_TpExPr_x_TPMDL_0}",
     ]
+    helpers.test_control_md(gui, md_string, expected_list)
+
+
+def test_number_md_width(gui: Gui, helpers):
+    md_string = "<|10|number|width=70%|>"
+    expected_list = ["<Input", 'value="10"', 'type="number"', 'width="70%"']
     helpers.test_control_md(gui, md_string, expected_list)
 
 

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -36,4 +36,4 @@ def test_broadcast(gui: Gui, helpers):
     gui._broadcast("broadcast_name", "broadcast_value")
     received_messages = ws_client.get_received()
     assert len(received_messages)
-    helpers.assert_outward_simple_ws_message(received_messages[0], "U", "_bc_broadcast_name", "broadcast_value")
+    helpers.assert_outward_simple_ws_message(received_messages[0], "BC", "_bc_broadcast_name", "broadcast_value")

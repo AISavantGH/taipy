@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -13,13 +13,13 @@
 
 import React, { useCallback, useMemo } from "react";
 import Slider from "@mui/material/Slider";
-import Tooltip from "@mui/material/Tooltip";
 import { sprintf } from "sprintf-js";
 
-import { TaipyBaseProps, TaipyHoverProps } from "./utils";
-import { useClassNames, useDynamicProperty } from "../../utils/hooks";
+import { TaipyBaseProps } from "./utils";
+import { useClassNames } from "../../utils/hooks";
+import { getComponentClassName } from "./TaipyStyle";
 
-interface IndicatorProps extends TaipyBaseProps, TaipyHoverProps {
+interface IndicatorProps extends TaipyBaseProps {
     min?: number;
     max?: number;
     value?: number;
@@ -43,7 +43,6 @@ const Indicator = (props: IndicatorProps) => {
 
     const horizontalOrientation = props.orientation ? props.orientation.charAt(0).toLowerCase() !== "v" : true;
     const className = useClassNames(props.libClassName, props.dynamicClassName, props.className);
-    const hover = useDynamicProperty(props.hoverText, props.defaultHoverText, undefined);
 
     const getLabel = useCallback(() => {
         const dsp = display === undefined ? (defaultDisplay === undefined ? "" : defaultDisplay) : display;
@@ -57,48 +56,48 @@ const Indicator = (props: IndicatorProps) => {
 
     const sliderSx = useMemo(
         () => ({
-                "&": {
-                    width: horizontalOrientation ? width : undefined,
-                    height: horizontalOrientation ? undefined : height,
-                },
-                "&.Mui-disabled": {
-                    color: "transparent",
-                },
-                "& .MuiSlider-markLabel": {
-                    transform: "initial",
-                },
-                "& span:nth-of-type(6)": {
-                    transform: horizontalOrientation ? "translateX(-100%)" : "translateY(100%)",
-                },
-                "& .MuiSlider-rail": {
-                    background: `linear-gradient(${
-                        horizontalOrientation ? 90 : 0
-                    }deg, rgba(255,0,0,1) 0%, rgba(0,255,0,1) 100%)`,
-                    opacity: "unset",
-                },
-                "& .MuiSlider-track": {
-                    border: "none",
-                    backgroundColor: "transparent",
-                },
-                "& .MuiSlider-valueLabel": {
-                    top: "unset",
-                },
-                "& .MuiSlider-valueLabel.MuiSlider-valueLabelOpen": {
-                    transform: horizontalOrientation ? "" : "translate(calc(50% + 10px))",
-                },
-                "& .MuiSlider-valueLabel:before": {
-                    left: horizontalOrientation ? "50%" : "0",
-                    bottom: horizontalOrientation ? "0" : "50%",
-                },
-            }),
+            "&": {
+                width: horizontalOrientation ? width : undefined,
+                height: horizontalOrientation ? undefined : height,
+            },
+            "&.Mui-disabled": {
+                color: "transparent",
+            },
+            "& .MuiSlider-markLabel": {
+                transform: "initial",
+            },
+            "& span:nth-of-type(6)": {
+                transform: horizontalOrientation ? "translateX(-100%)" : "translateY(100%)",
+            },
+            "& .MuiSlider-rail": {
+                background: `linear-gradient(${
+                    horizontalOrientation ? 90 : 0
+                }deg, rgba(255,0,0,1) 0%, rgba(0,255,0,1) 100%)`,
+                opacity: "unset",
+            },
+            "& .MuiSlider-track": {
+                border: "none",
+                backgroundColor: "transparent",
+            },
+            "& .MuiSlider-valueLabel": {
+                top: "unset",
+            },
+            "& .MuiSlider-valueLabel.MuiSlider-valueLabelOpen": {
+                transform: horizontalOrientation ? "" : "translate(calc(50% + 10px))",
+            },
+            "& .MuiSlider-valueLabel:before": {
+                left: horizontalOrientation ? "50%" : "0",
+                bottom: horizontalOrientation ? "0" : "50%",
+            },
+        }),
         [horizontalOrientation, width, height]
     );
 
     return (
-        <Tooltip title={hover || ""}>
+        <>
             <Slider
                 id={props.id}
-                className={className}
+                className={`${className} ${getComponentClassName(props.children)}`}
                 min={0}
                 max={100}
                 value={getValue(value === undefined ? defaultValue : value, min, max)}
@@ -109,7 +108,8 @@ const Indicator = (props: IndicatorProps) => {
                 orientation={horizontalOrientation ? undefined : "vertical"}
                 sx={sliderSx}
             ></Slider>
-        </Tooltip>
+            {props.children}
+        </>
     );
 };
 

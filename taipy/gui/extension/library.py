@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -16,7 +16,7 @@ import xml.etree.ElementTree as etree
 from abc import ABC, abstractmethod
 from inspect import isclass
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from .._renderers.builder import _Builder
 from .._warnings import _warn
@@ -42,6 +42,10 @@ class ElementProperty:
         property_type: t.Union[PropertyType, t.Type[_TaipyBase]],
         default_value: t.Optional[t.Any] = None,
         js_name: t.Optional[str] = None,
+        with_update: t.Optional[bool] = None,
+        *,
+        doc_string: t.Optional[str] = None,
+        type_hint: t.Optional[str] = None,
     ) -> None:
         """Initializes a new custom property declaration for an `Element^`.
 
@@ -52,6 +56,10 @@ class ElementProperty:
                 If unspecified, a camel case version of `name` is generated: for example, if `name` is
                 "my_property_name", then this property is referred to as "myPropertyName" in the
                 JavaScript code.
+            doc_string: An optional string that holds documentation for that property.<br/>
+                This is used when generating the stub classes for extension libraries.
+            type_hint: An optional string describing the Python type of that property.<br/>
+                This is used when generating the stub classes for extension libraries.
         """
         self.default_value = default_value
         self.property_type: t.Union[PropertyType, t.Type[_TaipyBase]]
@@ -64,6 +72,9 @@ class ElementProperty:
         else:
             self.property_type = property_type
         self._js_name = js_name
+        self.with_update = with_update
+        self.doc_string = doc_string
+        self.type_hint = type_hint
         super().__init__()
 
     def check(self, element_name: str, prop_name: str):
@@ -75,7 +86,11 @@ class ElementProperty:
             _warn(f"Property type '{self.property_type}' is invalid for element property '{element_name}.{prop_name}'.")
 
     def _get_tuple(self, name: str) -> tuple:
-        return (name, self.property_type, self.default_value)
+        return (
+            (name, self.property_type, self.default_value)
+            if self.with_update is None
+            else (name, self.property_type, self.default_value, self.with_update)
+        )
 
     def get_js_name(self, name: str) -> str:
         return self._js_name or _to_camel_case(name)
@@ -89,15 +104,14 @@ class Element:
     what the default property name is.
     """
 
-    __RE_PROP_VAR = re.compile(r"<tp:prop:(\w+)>")
-
     def __init__(
         self,
         default_property: str,
         properties: t.Dict[str, ElementProperty],
         react_component: t.Optional[str] = None,
+        *,
         render_xhtml: t.Optional[t.Callable[[t.Dict[str, t.Any]], str]] = None,
-        inner_properties: t.Optional[t.Dict[str, ElementProperty]] = None,
+        doc_string: t.Optional[str] = None,
     ) -> None:
         """Initializes a new custom element declaration.
 
@@ -105,21 +119,24 @@ class Element:
         *react_component* is ignored.
 
         Arguments:
-            default_property (str): the name of the default property for this element.
-            properties (List[ElementProperty]): The list of properties for this element.
-            inner_properties (Optional[List[ElementProperty]]): The optional list of inner properties for this element.<br/>
-                Default values are set/binded automatically.
-            react_component (Optional[str]): The name of the component to be created on the front-end.<br/>
+            default_property: The name of the default property for this element.
+            properties: The dictionary containing the properties of this element, where
+                the keys are the property names and the values are instances of ElementProperty.
+            react_component: The name of the component to be created on the front-end.<br/>
                 If not specified, it is set to a camel case version of the element's name
                 ("one_name" is transformed to "OneName").
-            render_xhtml (Optional[callable[[dict[str, Any]], str]]): A function that receives a
-                dictionary containing the element's properties and their values
-                and that must return a valid XHTML string.
+            render_xhtml: A function that receives a dictionary containing the element's properties and their values
+                and that must return a valid XHTML string.<br/>
+                This is used to implement static elements.
+            doc_string: The documentation text for this element or None if there is none, which is
+                the default.<br/>
+                This string is used when generating stub functions so elements of extension libraries
+                can be used with the Page Builder API.
         """  # noqa: E501
         self.default_attribute = default_property
         self.attributes = properties
-        self.inner_properties = inner_properties
         self.js_name = react_component
+        self.doc_string = doc_string
         if callable(render_xhtml):
             self._render_xhtml = render_xhtml
         super().__init__()
@@ -145,6 +162,9 @@ class Element:
     def _is_server_only(self):
         return hasattr(self, "_render_xhtml") and callable(self._render_xhtml)
 
+    def _process_inner_properties(self, _gui: "Gui", _attributes: t.Dict[str, t.Any], _counter: int):
+        pass
+
     def _call_builder(
         self,
         name,
@@ -152,19 +172,10 @@ class Element:
         properties: t.Optional[t.Dict[str, t.Any]],
         lib: "ElementLibrary",
         is_html: t.Optional[bool] = False,
+        counter: int = 0,
     ) -> t.Union[t.Any, t.Tuple[str, str]]:
         attributes = properties if isinstance(properties, dict) else {}
-        if self.inner_properties:
-            self.attributes.update(self.inner_properties)
-            for prop, attr in self.inner_properties.items():
-                val = attr.default_value
-                if val:
-                    # handling property replacement in inner properties <tp:prop:...>
-                    while m := Element.__RE_PROP_VAR.search(val):
-                        var = attributes.get(m.group(1))
-                        hash_value = "None" if var is None else gui._evaluate_expr(var)
-                        val = val[: m.start()] + hash_value + val[m.end() :]
-                attributes[prop] = val
+        self._process_inner_properties(gui, attributes, counter)
         # this modifies attributes
         hash_names = _Builder._get_variable_hash_names(gui, attributes)  # variable replacement
         # call user render if any
@@ -195,7 +206,7 @@ class Element:
                 gui=gui,
                 control_type=name,
                 element_name=f"{lib.get_js_module_name()}_{self._get_js_name(name)}",
-                attributes=properties,
+                prop_values=properties,
                 hash_names=hash_names,
                 lib_name=lib.get_name(),
                 default_value=default_value,
@@ -234,7 +245,7 @@ class ElementLibrary(ABC):
         The default implementation returns an empty dictionary, indicating that this library
         contains no custom visual elements.
         """
-        return {}
+        pass
 
     @abstractmethod
     def get_name(self) -> str:
@@ -264,7 +275,7 @@ class ElementLibrary(ABC):
             because each JavaScript module will have to have a unique name.
 
         """
-        return NotImplementedError  # type: ignore
+        pass
 
     def get_js_module_name(self) -> str:
         """
@@ -293,9 +304,27 @@ class ElementLibrary(ABC):
         """
         return _to_camel_case(self.get_name(), True)
 
+    def __get_class_folder(self):
+        if not hasattr(self, "_class_folder"):
+            module_obj = sys.modules.get(self.__class__.__module__)
+            base = (Path(".") if module_obj is None else Path(module_obj.__file__).parent).resolve()  # type: ignore[arg-type]
+            self._class_folder = base if base.exists() else Path(".").resolve()
+        return self._class_folder
+
+    def _do_get_relative_paths(self, paths: t.List[str]) -> t.List[str]:
+        ret = set()
+        for path in paths or []:
+            if bool(urlparse(path).netloc):
+                ret.add(path)
+            elif file_paths := self.__get_class_folder().glob(path):
+                ret.update([file_path.relative_to(self.__get_class_folder()).as_posix() for file_path in file_paths])
+            elif path:
+                ret.add(path)
+        return list(ret)
+
     def get_scripts(self) -> t.List[str]:
         """
-        Return the list of the mandatory script file pathnames.
+        Return the list of the mandatory script file path names.
 
         If a script file pathname is an absolute URL it will be used as is.<br/>
         If it's not it will be passed to `(ElementLibrary.)get_resource()^` to retrieve a local
@@ -332,9 +361,7 @@ class ElementLibrary(ABC):
         Arguments:
             name (str): The name of the resource for which a local Path should be returned.
         """  # noqa: E501
-        module_obj = sys.modules.get(self.__class__.__module__)
-        base = (Path(".") if module_obj is None else Path(module_obj.__file__).parent).resolve()  # type: ignore
-        base = base if base.exists() else Path(".").resolve()
+        base = self.__get_class_folder()
         file = (base / name).resolve()
         if str(file).startswith(str(base)) and file.exists():
             return file
@@ -345,7 +372,7 @@ class ElementLibrary(ABC):
         """TODO"""
         from ..gui import Gui
 
-        return f"/{Gui._EXTENSION_ROOT}/{self.get_name()}/{resource}{self.get_query(resource)}"
+        return f"/{Gui._EXTENSION_ROOT}/{self.get_name()}/{resource}{self.get_query(resource)}"  # type: ignore[attr-defined]
 
     def get_data(self, library_name: str, payload: t.Dict, var_name: str, value: t.Any) -> t.Optional[t.Dict]:
         """
@@ -417,3 +444,70 @@ class ElementLibrary(ABC):
             This version will be appended to the resource URL as a query arg (?v=<version>)
         """
         return None
+
+
+class _ElementWithInnerProps(Element):
+    __RE_PROP_VAR = re.compile(r"<tp:prop:(\w+)>")
+    __RE_UNIQUE_VAR = re.compile(r"<tp:uniq:(\w+)>")
+
+    def __init__(
+        self,
+        default_property: str,
+        properties: t.Dict[str, ElementProperty],
+        react_component: t.Optional[str] = None,
+        render_xhtml: t.Optional[t.Callable[[t.Dict[str, t.Any]], str]] = None,
+        doc_string: t.Optional[str] = None,
+        *,
+        inner_properties: t.Optional[t.Dict[str, ElementProperty]] = None,
+    ) -> None:
+        """NOT DOCUMENTED
+
+        Arguments:
+            inner_properties (Optional[List[ElementProperty]]): The optional list of inner properties
+                for this element.<br/>
+                Default values are set/bound automatically.
+        """
+        super().__init__(
+            default_property=default_property,
+            properties=properties,
+            react_component=react_component,
+            render_xhtml=render_xhtml,
+            doc_string=doc_string,
+        )
+        self.inner_properties = inner_properties
+
+    def _process_inner_properties(self, gui: "Gui", attributes: t.Dict[str, t.Any], counter: int):
+        if self.inner_properties:
+            uniques: t.Dict[str, int] = {}
+            self.attributes.update(
+                {
+                    prop: ElementProperty(attr.property_type, None, attr._js_name, attr.with_update)
+                    for prop, attr in self.inner_properties.items()
+                }
+            )
+            for prop, attr in self.inner_properties.items():
+                val = attr.default_value
+                if val:
+                    # handling property replacement in inner properties <tp:prop:...>
+                    while m := _ElementWithInnerProps.__RE_PROP_VAR.search(val):
+                        var = attributes.get(m.group(1))
+                        hash_value = None if var is None else gui._evaluate_expr(var)  # type: ignore[attr-defined]
+                        if hash_value:
+                            names = gui._get_real_var_name(hash_value)  # type: ignore[attr-defined]
+                            hash_value = names[0] if isinstance(names, tuple) else names
+                        else:
+                            hash_value = "None"
+                        val = val[: m.start()] + hash_value + val[m.end() :]
+                    # handling unique id replacement in inner properties <tp:uniq:...>
+                    has_uniq = False
+                    while m := _ElementWithInnerProps.__RE_UNIQUE_VAR.search(val):
+                        has_uniq = True
+                        id = uniques.get(m.group(1))
+                        if id is None:
+                            id = len(uniques) + 1
+                            uniques[m.group(1)] = id
+                        val = f"{val[: m.start()]}{counter}{id}{val[m.end() :]}"
+                    if has_uniq and gui._is_expression(val):  # type: ignore[attr-defined]
+                        gui._evaluate_expr(val, True)  # type: ignore[attr-defined]
+
+                attributes[prop] = val

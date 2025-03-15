@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -16,12 +16,21 @@ from example_library import ExampleLibrary
 
 from taipy.gui import Gui
 
+
+def on_action(state, id):
+    if id == "addChar":
+        # Add a random character to the end of 'label'
+        state.label += random.choice(string.ascii_letters)
+    elif id == "removeChar":
+        # Remove the first character of 'label'
+        if len(state.label) > 0:
+            state.label = state.label[1:]
+
+
 # Initial value
 label = "Here is some text"
 
 page = """
-# Custom elements example
-
 ## Fraction:
 
 No denominator: <|123|example.fraction|>
@@ -38,15 +47,5 @@ Colored text: <|{label}|example.label|>
 <|Remove a character|button|id=removeChar|>
 """
 
-
-def on_action(state, id):
-    if id == "addChar":
-        # Add a random character to the end of 'label'
-        state.label += random.choice(string.ascii_letters)
-    elif id == "removeChar":
-        # Remove the first character of 'label'
-        if len(state.label) > 0:
-            state.label = state.label[1:]
-
-
-Gui(page, libraries=[ExampleLibrary()]).run(debug=True)
+if __name__ == "__main__":
+    Gui(page, libraries=[ExampleLibrary()]).run(title="Extension Library - Custom elements example")

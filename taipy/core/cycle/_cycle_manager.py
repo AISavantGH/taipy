@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,11 +13,10 @@ import calendar
 from datetime import datetime, time, timedelta
 from typing import Callable, List, Optional
 
-from taipy.config.common.frequency import Frequency
-
 from .._entity._entity_ids import _EntityIds
 from .._manager._manager import _Manager
 from .._repository._abstract_repository import _AbstractRepository
+from ..common.frequency import Frequency
 from ..job._job_manager_factory import _JobManagerFactory
 from ..notification import EventEntityType, EventOperation, _publish_event
 from ..submission._submission_manager_factory import _SubmissionManagerFactory
@@ -33,7 +32,7 @@ class _CycleManager(_Manager[Cycle]):
     @classmethod
     def _create(
         cls, frequency: Frequency, name: Optional[str] = None, creation_date: Optional[datetime] = None, **properties
-    ):
+    ) -> Cycle:
         creation_date = creation_date if creation_date else datetime.now()
         start_date = _CycleManager._get_start_date_of_cycle(frequency, creation_date)
         end_date = _CycleManager._get_end_date_of_cycle(frequency, start_date)
@@ -63,7 +62,7 @@ class _CycleManager(_Manager[Cycle]):
             return cls._create(frequency=frequency, creation_date=creation_date, name=name)
 
     @staticmethod
-    def _get_start_date_of_cycle(frequency: Frequency, creation_date: datetime):
+    def _get_start_date_of_cycle(frequency: Frequency, creation_date: datetime) -> datetime:
         start_date = creation_date.date()
         start_time = time()
         if frequency == Frequency.DAILY:
@@ -77,7 +76,7 @@ class _CycleManager(_Manager[Cycle]):
         return datetime.combine(start_date, start_time)
 
     @staticmethod
-    def _get_end_date_of_cycle(frequency: Frequency, start_date: datetime):
+    def _get_end_date_of_cycle(frequency: Frequency, start_date: datetime) -> datetime:
         end_date = start_date
         if frequency == Frequency.DAILY:
             end_date = end_date + timedelta(days=1)

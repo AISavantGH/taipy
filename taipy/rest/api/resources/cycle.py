@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,8 +14,8 @@ from datetime import datetime
 from flask import request
 from flask_restful import Resource
 
-from taipy.config.common.frequency import Frequency
 from taipy.core import Cycle
+from taipy.core.common.frequency import Frequency
 from taipy.core.cycle._cycle_manager_factory import _CycleManagerFactory
 from taipy.core.exceptions.exceptions import NonExistingCycle
 
@@ -76,9 +76,9 @@ class CycleResource(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.get("http://localhost:5000/api/v1/cycles/CYCLE_223894_e019-b50b-4b9f-ac09-527a")
-                    print(response)
-                    print(response.json())
+                response = requests.get("http://localhost:5000/api/v1/cycles/CYCLE_223894_e019-b50b-4b9f-ac09-527a")
+                print(response)
+                print(response.json())
                 ```
                 `CYCLE_223894_e0fab919-b50b-4b9f-ac09-52f77474fa7a` is the value of the  *cycle_id* parameter. It
                 represents the identifier of the Cycle we want to retrieve.
@@ -106,7 +106,7 @@ class CycleResource(Resource):
           When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_READER` role.
 
-      parameters:
+      arguments:
         - in: path
           name: cycle_id
           schema:
@@ -179,7 +179,7 @@ class CycleResource(Resource):
             When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_EDITOR` role.
 
-      parameters:
+      arguments:
         - in: path
           name: cycle_id
           schema:
@@ -258,9 +258,9 @@ class CycleList(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.get("http://localhost:5000/api/v1/cycles")
-                    print(response)
-                    print(response.json())
+                response = requests.get("http://localhost:5000/api/v1/cycles")
+                print(response)
+                print(response.json())
                 ```
 
                 In case of success here is an output example:
@@ -333,16 +333,16 @@ class CycleList(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    cycle_schema = {
-                        "frequency": "DAILY",
-                        "properties": {},
-                        "creation_date": "2020-01-01T00:00:00",
-                        "start_date": "2020-01-01T00:00:00",
-                        "end_date": "2020-01-01T00:00:00"
-                    }
-                    response = requests.post("http://localhost:5000/api/v1/cycles", json=cycle_schema)
-                    print(response)
-                    print(response.json())
+                cycle_schema = {
+                    "frequency": "DAILY",
+                    "properties": {},
+                    "creation_date": "2020-01-01T00:00:00",
+                    "start_date": "2020-01-01T00:00:00",
+                    "end_date": "2020-01-01T00:00:00"
+                }
+                response = requests.post("http://localhost:5000/api/v1/cycles", json=cycle_schema)
+                print(response)
+                print(response.json())
                 ```
                 A `CycleSchema^` is provided as a dictionary to specify the various attributes of the `Cycle^` to
                 create.

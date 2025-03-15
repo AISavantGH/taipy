@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,12 +13,14 @@ from unittest import mock
 
 import pytest
 
-from taipy.config.common.scope import Scope
+from taipy import Scope
+from taipy.common.config import Config
 from taipy.core.common._utils import _Subscriber
 from taipy.core.data._data_manager_factory import _DataManagerFactory
 from taipy.core.data.data_node import DataNode
 from taipy.core.data.in_memory import InMemoryDataNode
 from taipy.core.data.pickle import PickleDataNode
+from taipy.core.exceptions import AttributeKeyAlreadyExisted
 from taipy.core.scenario._scenario_manager import _ScenarioManager
 from taipy.core.scenario.scenario import Scenario
 from taipy.core.sequence._sequence_manager import _SequenceManager
@@ -26,6 +28,29 @@ from taipy.core.sequence.sequence import Sequence
 from taipy.core.sequence.sequence_id import SequenceId
 from taipy.core.task._task_manager import _TaskManager
 from taipy.core.task.task import Task, TaskId
+
+
+class FakeDataNode:
+    config_id = "config_id_of_a_fake_dn"
+
+
+def test_sequence_equals():
+    task_config = Config.configure_task("mult_by_3", print, [], None)
+    scenario_config = Config.configure_scenario("scenario", [task_config])
+
+    scenario = _ScenarioManager._create(scenario_config)
+    scenario.add_sequences({"print": list(scenario.tasks.values())})
+    sequence_1 = scenario.sequences["print"]
+    sequence_id = sequence_1.id
+
+    assert sequence_1.properties["name"] == "print"
+    sequence_2 = _SequenceManager._get(sequence_id)
+    # To test if instance is same type
+    task = Task("task", {}, print, [], [], sequence_id)
+
+    assert sequence_1 == sequence_2
+    assert sequence_1 != sequence_id
+    assert sequence_1 != task
 
 
 def test_create_sequence():
@@ -36,7 +61,7 @@ def test_create_sequence():
     sequence = Sequence({"description": "description"}, [task], sequence_id=SequenceId("name_1"))
     assert sequence.id == "name_1"
     assert sequence.owner_id is None
-    assert sequence.description == "description"
+    assert sequence.properties["description"] == "description"
     assert sequence.foo == input
     assert sequence.bar == output
     assert sequence.baz.id == task.id
@@ -60,7 +85,7 @@ def test_create_sequence():
     )
     assert sequence_1.id == "name_1"
     assert sequence_1.owner_id == "owner_id"
-    assert sequence_1.description == "description"
+    assert sequence_1.properties["description"] == "description"
     assert sequence_1.input == input_1
     assert sequence_1.output == output_1
     assert sequence_1.task_1 == task_1
@@ -89,7 +114,7 @@ def test_create_sequence():
     )
     assert sequence_2.owner_id == "owner_id"
     assert sequence_2.id == "name_2"
-    assert sequence_2.description == "description"
+    assert sequence_2.properties["description"] == "description"
     assert sequence_2.tasks == {task.config_id: task, task_1.config_id: task_1}
     assert sequence_2.data_nodes == {"foo": input, "bar": output, "input": input_1, "output": output_1}
     assert sequence_2.parent_ids == {"parent_id_1", "parent_id_2"}
@@ -102,11 +127,27 @@ def test_create_sequence():
                 return self.label
 
         get_mck.return_value = MockOwner()
-        assert sequence_2.get_label() == "owner_label > " + sequence_2.name
-        assert sequence_2.get_simple_label() == sequence_2.name
+        assert sequence_2.get_label() == "owner_label > " + sequence_2.properties["name"]
+        assert sequence_2.get_simple_label() == sequence_2.properties["name"]
 
 
-def test_check_consistency():
+def test_get_set_attribute():
+    dn_cfg = Config.configure_data_node("bar")
+    task_config = Config.configure_task("print", print, [dn_cfg], None)
+    scenario_config = Config.configure_scenario("scenario", [task_config])
+
+    scenario = _ScenarioManager._create(scenario_config)
+    scenario.add_sequences({"seq": list(scenario.tasks.values())})
+    sequence = scenario.sequences["seq"]
+
+    sequence.key = "value"
+    assert sequence.key == "value"
+
+    with pytest.raises(AttributeKeyAlreadyExisted):
+        sequence.bar = "KeyAlreadyUsed"
+
+
+def test_check_consistency(caplog):
     sequence_1 = Sequence({}, [], "name_1")
     assert sequence_1._is_consistent()
 
@@ -120,6 +161,7 @@ def test_check_consistency():
     task_3 = Task("tfoo", {}, print, [data_node_3], [data_node_3], TaskId("task_id_3"))
     sequence_3 = Sequence({}, [task_3], "name_3")
     assert not sequence_3._is_consistent()  # Not a dag
+    assert 'The DAG of sequence "name_3" is not a directed acyclic graph' in caplog.text
 
     input_4 = InMemoryDataNode("foo", Scope.SCENARIO)
     output_4 = InMemoryDataNode("bar", Scope.SCENARIO)
@@ -127,9 +169,7 @@ def test_check_consistency():
     task_4_2 = Task("tbar", {}, print, [output_4], [input_4], TaskId("task_id_4_2"))
     sequence_4 = Sequence({}, [task_4_1, task_4_2], "name_4")
     assert not sequence_4._is_consistent()  # Not a Dag
-
-    class FakeDataNode:
-        config_id = "config_id_of_a_fake_dn"
+    assert 'The DAG of sequence "name_4" is not a directed acyclic graph' in caplog.text
 
     input_6 = DataNode("foo", Scope.SCENARIO, "input_id_5")
     output_6 = DataNode("bar", Scope.SCENARIO, "output_id_5")
@@ -137,6 +177,10 @@ def test_check_consistency():
     task_6_2 = Task("tbar", {}, print, [output_6], [FakeDataNode()], TaskId("task_id_5_2"))
     sequence_6 = Sequence({}, [task_6_1, task_6_2], "name_5")
     assert not sequence_6._is_consistent()  # Not a DataNode
+    assert (
+        'Invalid edge detected in sequence "name_5": left node Task "tbar" and right node FakeDataNode '
+        "must connect a Task and a DataNode" in caplog.text
+    )
 
     intermediate_7 = DataNode("foo", Scope.SCENARIO, "intermediate_id_7")
     output_7 = DataNode("bar", Scope.SCENARIO, "output_id_7")
@@ -160,6 +204,7 @@ def test_check_consistency():
     task_9_2 = Task("tbar", {}, print, [input_9_2], [output_9_2], TaskId("task_id_9_2"))
     sequence_9 = Sequence({}, [task_9_1, task_9_2], "name_9")
     assert not sequence_9._is_consistent()  # Not connected
+    assert 'The DAG of sequence "name_9" is not weakly connected' in caplog.text
 
     input_10_1 = DataNode("foo", Scope.SCENARIO, "output_id_10_1")
     intermediate_10_1 = DataNode("bar", Scope.SCENARIO, "intermediate_id_10_1")
@@ -412,26 +457,42 @@ def test_get_inputs():
 
 
 def test_is_ready_to_run():
-    data_node_1 = PickleDataNode("foo", Scope.SCENARIO, "s1", properties={"default_data": 1})
-    data_node_2 = PickleDataNode("bar", Scope.SCENARIO, "s2", properties={"default_data": 2})
-    data_node_4 = PickleDataNode("qux", Scope.SCENARIO, "s4", properties={"default_data": 4})
-    data_node_5 = PickleDataNode("quux", Scope.SCENARIO, "s5", properties={"default_data": 5})
-    data_node_6 = PickleDataNode("quuz", Scope.SCENARIO, "s6", properties={"default_data": 6})
-    data_node_7 = PickleDataNode("corge", Scope.SCENARIO, "s7", properties={"default_data": 7})
-    task_1 = Task("grault", {}, print, [data_node_1, data_node_2], [data_node_4], TaskId("t1"))
-    task_2 = Task("garply", {}, print, [data_node_6], [data_node_5], TaskId("t2"))
-    task_3 = Task("waldo", {}, print, [data_node_5, data_node_4], id=TaskId("t3"))
-    task_4 = Task("fred", {}, print, [data_node_4], [data_node_7], TaskId("t4"))
-    sequence = Sequence({}, [task_4, task_2, task_1, task_3], SequenceId("p1"))
-    # s1 ---      s6 ---> t2 ---> s5
+    scenario_id = "SCENARIO_scenario_id"
+    task_1_id, task_2_id, task_3_id, task_4_id = (
+        TaskId("TASK_t1"),
+        TaskId("TASK_t2"),
+        TaskId("TASK_t3"),
+        TaskId("TASK_t4"),
+    )
+    data_node_1 = PickleDataNode("foo", Scope.SCENARIO, "s1", parent_ids={task_1_id}, properties={"default_data": 1})
+    data_node_2 = PickleDataNode("bar", Scope.SCENARIO, "s2", parent_ids={task_1_id}, properties={"default_data": 2})
+    data_node_3 = PickleDataNode(
+        "qux", Scope.SCENARIO, "s3", parent_ids={task_1_id, task_3_id, task_4_id}, properties={"default_data": 4}
+    )
+    data_node_4 = PickleDataNode(
+        "quux", Scope.SCENARIO, "s4", parent_ids={task_2_id, task_3_id}, properties={"default_data": 5}
+    )
+    data_node_5 = PickleDataNode("quuz", Scope.SCENARIO, "s5", parent_ids={task_2_id}, properties={"default_data": 6})
+    data_node_6 = PickleDataNode("corge", Scope.SCENARIO, "s6", parent_ids={task_4_id}, properties={"default_data": 7})
+    task_1 = Task("grault", {}, print, [data_node_1, data_node_2], [data_node_3], id=task_1_id)
+    task_2 = Task("garply", {}, print, [data_node_5], [data_node_4], id=task_2_id)
+    task_3 = Task("waldo", {}, print, [data_node_4, data_node_3], id=task_3_id)
+    task_4 = Task("fred", {}, print, [data_node_3], [data_node_6], id=task_4_id)
+    scenario = Scenario("scenario_config", [task_1, task_2, task_3, task_4], {}, scenario_id=scenario_id)
+
+    data_manager = _DataManagerFactory._build_manager()
+    for dn in [data_node_1, data_node_2, data_node_3, data_node_4, data_node_5, data_node_6]:
+        data_manager._set(dn)
+    for task in [task_1, task_2, task_3, task_4]:
+        _TaskManager._set(task)
+    _ScenarioManager._set(scenario)
+    scenario.add_sequence("sequence", [task_4, task_2, task_1, task_3])
+    sequence = scenario.sequences["sequence"]
+    # s1 ---      s5 ---> t2 ---> s4
     #       |                     |
     #       |---> t1 ---|      -----> t3
     #       |           |      |
-    # s2 ---             ---> s4 ---> t4 ---> s7
-
-    data_manager = _DataManagerFactory._build_manager()
-    for dn in [data_node_1, data_node_2, data_node_4, data_node_5, data_node_6, data_node_7]:
-        data_manager._set(dn)
+    # s2 ---             ---> s3 ---> t4 ---> s6
 
     assert sequence.is_ready_to_run()
 
@@ -439,12 +500,12 @@ def test_is_ready_to_run():
     assert not sequence.is_ready_to_run()
 
     data_node_2.edit_in_progress = True
-    data_node_6.edit_in_progress = True
+    data_node_5.edit_in_progress = True
     assert not sequence.is_ready_to_run()
 
     data_node_1.edit_in_progress = False
     data_node_2.edit_in_progress = False
-    data_node_6.edit_in_progress = False
+    data_node_5.edit_in_progress = False
     assert sequence.is_ready_to_run()
 
 

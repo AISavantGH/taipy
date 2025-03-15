@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -42,10 +42,12 @@ _default_stylekit: Stylekit = {
 # Default config loaded by app.py
 default_config: Config = {
     "allow_unsafe_werkzeug": False,
+    "app_id": False,
     "async_mode": "gevent",
     "change_delay": None,
     "chart_dark_template": None,
     "base_url": "/",
+    "client_url": None,
     "dark_mode": True,
     "dark_theme": None,
     "debug": False,
@@ -58,12 +60,15 @@ default_config: Config = {
     "ngrok_token": "",
     "notebook_proxy": True,
     "notification_duration": 3000,
+    "port": 5000,
+    "port_auto_ranges": [(49152, 65535)],
     "propagate": True,
     "run_browser": True,
     "run_in_thread": False,
     "run_server": True,
     "server_config": None,
     "single_client": False,
+    "state_retention_period": 0,
     "system_notification": False,
     "theme": None,
     "time_zone": None,
@@ -74,5 +79,4 @@ default_config: Config = {
     "use_reloader": False,
     "watermark": "Taipy inside",
     "webapp_path": None,
-    "port": 5000,
 }

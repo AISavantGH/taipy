@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from taipy.config import Config, _inject_section
+from taipy.common.config import Config, _inject_section
 from taipy.gui import Gui
 from taipy.gui._default_config import default_config
 from taipy.gui._gui_section import _GuiSection
@@ -82,11 +82,13 @@ def test_gui_service_arguments_hierarchy():
     assert service_config["margin"] is None
     assert service_config["ngrok_token"] == ""
     assert service_config["notification_duration"] == 3000
+    assert service_config["port"] == 5000
     assert service_config["propagate"]
     assert service_config["run_browser"]
     assert not service_config["run_in_thread"]
     assert not service_config["run_server"]
     assert not service_config["single_client"]
+    assert service_config["state_retention_period"] == 0
     assert not service_config["system_notification"]
     assert service_config["theme"] is None
     assert service_config["time_zone"] is None
@@ -96,7 +98,6 @@ def test_gui_service_arguments_hierarchy():
     assert not service_config["use_reloader"]
     assert service_config["watermark"] == "Taipy inside"
     assert service_config["webapp_path"] is None
-    assert service_config["port"] == 5000
     gui.stop()
 
     # Override default configuration by explicit defined arguments in Gui.run()
@@ -115,6 +116,7 @@ def test_gui_service_arguments_hierarchy():
     with patch("sys.argv", ["prog"]):
         gui.run(run_server=False, watermark="", host="my_host", port=5001)
     service_config = gui._config.config
+
     assert not service_config["dark_mode"]
     assert service_config["host"] == "my_2nd_host"
     assert service_config["watermark"] == ""

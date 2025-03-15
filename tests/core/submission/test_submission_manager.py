@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -150,6 +150,10 @@ def test_is_deletable():
     submission_manager._set(submission)
 
     assert len(submission_manager._get_all()) == 1
+
+    rc = submission_manager._is_deletable("some_submission")
+    assert not rc
+    assert "Entity 'some_submission' does not exist in the repository." in rc.reasons
 
     assert submission._submission_status == SubmissionStatus.SUBMITTED
     assert not submission.is_deletable()

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -15,11 +15,10 @@ import typing as t
 from ._warnings import _warn
 from .gui import Gui
 from .state import State
+from .utils.callable import _is_function
 
 
-def download(
-    state: State, content: t.Any, name: t.Optional[str] = "", on_action: t.Optional[t.Union[str, t.Callable]] = ""
-):
+def download(state: State, content: t.Any, name: t.Optional[str] = "", on_action: t.Union[str, t.Callable, None] = ""):
     """Download content to the client.
 
     Arguments:
@@ -28,82 +27,109 @@ def download(
         name: File name for the content on the client browser (defaults to content name).
         on_action: Callback function (or callback name) to call when the download ends. See below.
 
-    ## Notes:
+    <h4>Notes:</h4>
 
     - *content*: this parameter can hold several values depending on your use case:
         - a string: the value must be an existing path name to the file that gets downloaded or
           the URL to the resource you want to download.
-        - a buffer (such as a `bytes` object): if the size of the buffer is smaller than
-           the [*data_url_max_size*](../gui/configuration.md#p-data_url_max_size) configuration
-           setting, then the [`python-magic`](https://pypi.org/project/python-magic/) package is
-           used to determine the [MIME type](https://en.wikipedia.org/wiki/Media_type) of the
-           buffer content, and the download is performed using a generated "data:" URL with
-           the relevant type, and a base64-encoded version of the buffer content.<br/>
-           If the buffer is too large, its content is transferred after saving it in a temporary
-           server file.
-      - *on_action*: this callback is triggered when the transfer of the content is achieved.</br>
-           In this function, you can perform any clean-up operation that could be required after
-           the download is completed.<br/>
-           This callback can use three optional parameters:
-           - *state*: the `State^` instance of the caller.
-           - *id* (optional): a string representing the identifier of the caller. If this function
-             is called directly, this will always be "Gui.download". Some controls may also trigger
-             download actions, and then *id* would reflect the identifier of those controls.
-           - *payload* (optional): an optional payload from the caller.<br/>
-             This is a dictionary with the following keys:
-              - *action*: the name of the callback;
-              - *args*: an array of two strings. The first element reflects the *name* parameter,
-                and the second element reflects the server-side URL where the file is located.
+        - a buffer (such as a `bytes` object): if the size of the buffer is smaller than the
+          [*data_url_max_size*](../../../../../userman/advanced_features/configuration/gui-config.md#p-data_url_max_size)
+          configuration setting, then the [`python-magic`](https://pypi.org/project/python-magic/)
+          package is used to determine the [MIME type](https://en.wikipedia.org/wiki/Media_type)
+          of the buffer content, and the download is performed using a generated "data:" URL with
+          the relevant type, and a base64-encoded version of the buffer content.<br/>
+          If the buffer is too large, its content is transferred after saving it in a temporary
+          server file.
+        - *on_action*: this callback is triggered when the transfer of the content is achieved.</br>
+          In this function, you can perform any clean-up operation that could be required after
+          the download is completed.<br/>
+          This callback can use three optional parameters:
+            - *state*: the `State^` instance of the caller.
+            - *id* (optional): a string representing the identifier of the caller. If this function
+              is called directly, this will always be "Gui.download". Some controls may also trigger
+              download actions, and then *id* would reflect the identifier of those controls.
+            - *payload* (optional): an optional payload from the caller.<br/>
+              This is a dictionary with the following keys:
+                - *action*: the name of the callback;
+                - *args*: an array of two strings. The first element reflects the *name* parameter,
+                  and the second element reflects the server-side URL where the file is located.
     """
     if state and isinstance(state._gui, Gui):
-        state._gui._download(content, name, on_action)
+        state._gui._download(content, name, on_action)  # type: ignore[attr-defined]
     else:
         _warn("'download()' must be called in the context of a callback.")
 
 
 def notify(
     state: State,
-    notification_type: str = "I",
+    notification_type: str = "info",
     message: str = "",
     system_notification: t.Optional[bool] = None,
     duration: t.Optional[int] = None,
-):
+    id: str = "",
+) -> t.Optional[str]:
     """Send a notification to the user interface.
 
     Arguments:
         state (State^): The current user state as received in any callback.
         notification_type: The notification type. This can be one of "success", "info",
-            "warning", or "error".<br/>
-            To remove the last notification, set this parameter to the empty string.
+            "warning", or "error".
         message: The text message to display.
         system_notification: If True, the system will also show the notification.<br/>
             If not specified or set to None, this parameter will use the value of
             *configuration[system_notification]*.
-        duration: The time, in milliseconds, during which the notification is shown.
+        duration: The time, in milliseconds, that the notification is displayed.<br/>
             If not specified or set to None, this parameter will use the value of
-            *configuration[notification_duration]*.
+            *configuration[notification_duration]*.<br/>
+            If *duration* is 0, the notification remains visible indefinitely until closed. If *id*
+            is set to a non-empty string, the application can call `close_notification(id)^` to
+            close the notification. The user can always manually close the notification.
+        id: An optional identifier for this notification, so the application can close it explicitly
+            using `close_notification()^` before the *duration* delay has passed.
 
     Note that you can also call this function with *notification_type* set to the first letter
-    or the alert type (i.e. setting *notification_type* to "i" is equivalent to setting it to
+    or the notification type (i.e. setting *notification_type* to "i" is equivalent to setting it to
     "info").
 
-    If *system_notification* is set to True, then the browser requests the system
-    to display a notification as well. They usually appear in small windows that
-    fly out of the system tray.<br/>
-    The first time your browser is requested to show such a system notification for
-    Taipy applications, you may be prompted to authorize the browser to do so. Please
-    refer to your browser documentation for details on how to allow or prevent this
-    feature.
+    If *system_notification* is set to True, then the browser requests the system to display a
+    notification as well. They usually appear in small windows that fly out of the system tray.<br/>
+    When a Taipy application requests a system notification for the first time, the browser may
+    prompt the user for permission. The  browser documentation will describe how to allow or prevent
+    this feature.<br/>
+    If the user denies system notification permissions, the system notifications will not be
+    displayed, but the in-app notification will still function.
     """
     if state and isinstance(state._gui, Gui):
-        state._gui._notify(notification_type, message, system_notification, duration)
+        return state._gui._notify(notification_type, message, system_notification, duration, id)  # type: ignore[attr-defined]
     else:
         _warn("'notify()' must be called in the context of a callback.")
+        return None
+
+
+def close_notification(state: State, id: str) -> None:
+    """Close a specific notification.
+
+    This function closes a persistent notification by using the same identifier that was provided to
+    `notify()^`.<br/>
+    If multiple notifications were created with the same identifier, they will all be closed
+    simultaneously.
+
+    If no notification with this identifier exists, no action is taken.
+
+    Arguments:
+        state (State^): The current user state as received in any callback.
+        id: The identifier of the notification(s) that must be closed.
+    """
+    if state and isinstance(state._gui, Gui):
+        # Send the close command with the notification_id
+        state._gui._close_notification(id)  # type: ignore[attr-defined]
+    else:
+        _warn("'close_notification()' must be called in the context of a callback.")
 
 
 def hold_control(
     state: State,
-    callback: t.Optional[t.Union[str, t.Callable]] = None,
+    callback: t.Union[str, t.Callable, None] = None,
     message: t.Optional[str] = "Work in Progress...",
 ):
     """Hold the User Interface actions.
@@ -118,17 +144,20 @@ def hold_control(
 
     Arguments:
         state (State^): The current user state received in any callback.
-        callback (Optional[Union[str, Callable]]): The function to be called if the user
+        callback (Union[str, Callable]): The function to be called if the user
             chooses to cancel.<br/>
             If empty or None, no cancel action is provided to the user.<br/>
             The signature of this function is:
-            - state (State^): The user state;
+
+            - state (`State^`): The user state;
             - id (str): the id of the button that triggered the callback. That will always be
               "UIBlocker" since it is created and managed internally;
+
+            If this parameter is None, no "Cancel" button is displayed.
         message: The message to show. The default value is the string "Work in Progress...".
     """
     if state and isinstance(state._gui, Gui):
-        state._gui._hold_actions(callback, message)
+        state._gui._hold_actions(callback, message)  # type: ignore[attr-defined]
     else:
         _warn("'hold_actions()' must be called in the context of a callback.")
 
@@ -143,7 +172,7 @@ def resume_control(state: State):
         state (State^): The current user state as received in any callback.
     """
     if state and isinstance(state._gui, Gui):
-        state._gui._resume_actions()
+        state._gui._resume_actions()  # type: ignore[attr-defined]
     else:
         _warn("'resume_actions()' must be called in the context of a callback.")
 
@@ -160,7 +189,7 @@ def navigate(
     Arguments:
         state (State^): The current user state as received in any callback.
         to: The name of the page to navigate to. This can be a page identifier (as created by
-            `Gui.add_page()^` with no leading '/') or an URL.<br/>
+            `Gui.add_page()^` with no leading '/') or a URL.<br/>
             If omitted, the application navigates to the root page.
         params: A dictionary of query parameters.
         tab: When navigating to a page that is not a known page, the page is opened in a tab identified by
@@ -169,7 +198,7 @@ def navigate(
         force: When navigating to a known page, the content is refreshed even it the page is already shown.
     """
     if state and isinstance(state._gui, Gui):
-        state._gui._navigate(to, params, tab, force)
+        state._gui._navigate(to, params, tab, force)  # type: ignore[attr-defined]
     else:
         _warn("'navigate()' must be called in the context of a callback.")
 
@@ -194,7 +223,7 @@ def get_user_content_url(
         An URL that, when queried, triggers the *on_user_content* callback.
     """
     if state and isinstance(state._gui, Gui):
-        return state._gui._get_user_content_url(path, params)
+        return state._gui._get_user_content_url(path, params)  # type: ignore[attr-defined]
     _warn("'get_user_content_url()' must be called in the context of a callback.")
     return None
 
@@ -205,7 +234,7 @@ def get_state_id(state: State) -> t.Optional[str]:
     The state identifier is a string generated by Taipy GUI for a given `State^` that is used
     to serialize callbacks.
     See the
-    [User Manual section on Long Running Callbacks](../gui/callbacks.md#long-running-callbacks)
+    [User Manual section on Long Running Callbacks](../../../../../userman/gui/callbacks.md#long-running-callbacks)
     for details on when and how this function can be used.
 
     Arguments:
@@ -213,10 +242,10 @@ def get_state_id(state: State) -> t.Optional[str]:
 
     Returns:
         A string that uniquely identifies the state.<br/>
-        If None, then **state** was not handled by a `Gui^` instance.
+            If this value None, it indicates that *state* is not handled by a `Gui^` instance.
     """
     if state and isinstance(state._gui, Gui):
-        return state._gui._get_client_id()
+        return state._gui._get_client_id()  # type: ignore[attr-defined]
     return None
 
 
@@ -227,14 +256,15 @@ def get_module_context(state: State) -> t.Optional[str]:
         state (State^): The current user state as received in any callback.
 
     Returns:
-        The name of the current module
+        The name of the current module.
     """
     if state and isinstance(state._gui, Gui):
-        return state._gui._get_locals_context()
+        return state._gui._get_locals_context()  # type: ignore[attr-defined]
     return None
 
 
 def get_context_id(state: State) -> t.Any:
+    """NOT DOCUMENTED"""
     _warn("'get_context_id()' was deprecated in Taipy GUI 2.0. Use 'get_state_id()' instead.")
     return get_state_id(state)
 
@@ -259,7 +289,7 @@ def get_module_name_from_state(state: State) -> t.Optional[str]:
             that triggered the callback that was provided the *state* object.
     """
     if state and isinstance(state._gui, Gui):
-        return state._gui._get_locals_context()
+        return state._gui._get_locals_context()  # type: ignore[attr-defined]
     return None
 
 
@@ -267,39 +297,37 @@ def invoke_callback(
     gui: Gui,
     state_id: str,
     callback: t.Callable,
-    args: t.Union[t.Tuple, t.List],
+    args: t.Optional[t.Sequence[t.Any]] = None,
     module_context: t.Optional[str] = None,
 ) -> t.Any:
     """Invoke a user callback for a given state.
 
-    See the
-    [User Manual section on Long Running Callbacks in a Thread](../gui/callbacks.md#long-running-callbacks-in-a-thread)
-    for details on when and how this function can be used.
+    Calling this function is equivalent to calling
+    *gui*.`(Gui.)invoke_callback(state_id, callback, args, module_context)^`.
 
     Arguments:
         gui (Gui^): The current Gui instance.
         state_id: The identifier of the state to use, as returned by `get_state_id()^`.
         callback (Callable[[State^, ...], None]): The user-defined function that is invoked.<br/>
             The first parameter of this function **must** be a `State^`.
-        args (Union[Tuple, List]): The remaining arguments, as a List or a Tuple.
+        args (Optional[Sequence]): The remaining arguments, as a List or a Tuple.
         module_context (Optional[str]): the name of the module that will be used.
     """
     if isinstance(gui, Gui):
-        return gui._call_user_callback(state_id, callback, list(args), module_context)
+        return gui.invoke_callback(state_id, callback, args, module_context)
     _warn("'invoke_callback()' must be called with a valid Gui instance.")
 
 
 def broadcast_callback(
     gui: Gui,
     callback: t.Callable,
-    args: t.Optional[t.Union[t.Tuple, t.List]] = None,
+    args: t.Optional[t.Sequence[t.Any]] = None,
     module_context: t.Optional[str] = None,
-) -> t.Any:
+) -> t.Dict[str, t.Any]:
     """Invoke a callback for every client.
 
-    This callback gets invoked for every client connected to the application with the appropriate
-    `State^` instance. You can then perform client-specific tasks, such as updating the state
-    variable reflected in the user interface.
+    Calling this function is equivalent to calling the method
+    *gui*.`(Gui.)broadcast_callback(callback, args)^`.
 
     Arguments:
         gui (Gui^): The current Gui instance.
@@ -310,24 +338,25 @@ def broadcast_callback(
         args: The parameters to send to *callback*, if any.
     """
     if isinstance(gui, Gui):
-        return gui._call_broadcast_callback(callback, list(args) if args else [], module_context)
+        return gui.broadcast_callback(callback, args, module_context)
     _warn("'broadcast_callback()' must be called with a valid Gui instance.")
 
 
 def invoke_state_callback(gui: Gui, state_id: str, callback: t.Callable, args: t.Union[t.Tuple, t.List]) -> t.Any:
-    _warn("'invoke_state_callback()' was deprecated in Taipy GUI 2.0. Use 'invoke_callback()' instead.")
-    return invoke_callback(gui, state_id, callback, args)
+    """NOT DOCUMENTED"""
+    _warn("'invoke_state_callback()' was deprecated in Taipy GUI 2.0. Use 'Gui.invoke_callback()' instead.")
+    return gui.invoke_callback(state_id, callback, args)
 
 
 def invoke_long_callback(
     state: State,
     user_function: t.Callable,
-    user_function_args: t.Union[t.Tuple, t.List] = None,
+    user_function_args: t.Union[t.Tuple, t.List, None] = None,
     user_status_function: t.Optional[t.Callable] = None,
-    user_status_function_args: t.Union[t.Tuple, t.List] = None,
+    user_status_function_args: t.Union[t.Tuple, t.List, None] = None,
     period=0,
 ):
-    """Invoke a long running user callback.
+    """Invoke a long-running user callback.
 
     Long-running callbacks are run in a separate thread to not block the application itself.
 
@@ -336,14 +365,14 @@ def invoke_long_callback(
     *user_function* is finished (successfully or not), or periodically (using the *period* parameter).
 
     See the
-    [User Manual section on Long Running Callbacks](../gui/callbacks.md#long-running-callbacks)
+    [User Manual section on Long Running Callbacks](../../../../../userman/gui/callbacks.md#long-running-callbacks)
     for details on when and how this function can be used.
 
     Arguments:
         state (State^): The `State^` instance, as received in any callback.
         user_function (Callable[[...], None]): The function that will be run independently of Taipy GUI. Note
             that this function must not use *state*, which is not persisted across threads.
-        user_function_args (Optional[List|Tuple]): The arguments to send to *user_function*.
+        user_function_args (Union[List, Tuple]): The arguments to send to *user_function*.
         user_status_function (Optional(Callable[[State^, bool, ...], None])): The optional user-defined status
             function that is invoked at the end of and possibly during the runtime of *user_function*:
 
@@ -360,7 +389,7 @@ def invoke_long_callback(
                - If this parameter is set to an int value, then this value indicates
                  how many periods (as lengthy as indicated in *period*) have elapsed since *user_function* was
                  started.
-        user_status_function_args (Optional[List|Tuple]): The remaining arguments of the user status function.
+        user_status_function_args (Union[List, Tuple]): The remaining arguments of the user status function.
         period (int): The interval, in milliseconds, at which *user_status_function* is called.<br/>
             The default value is 0, meaning no call to *user_status_function* will happen until *user_function*
             terminates (then the second parameter of that call will be ).</br>
@@ -369,21 +398,22 @@ def invoke_long_callback(
     """
     if not state or not isinstance(state._gui, Gui):
         _warn("'invoke_long_callback()' must be called in the context of a callback.")
+        return
 
     if user_status_function_args is None:
         user_status_function_args = []
     if user_function_args is None:
         user_function_args = []
 
-    state_id = get_state_id(state)
-    module_context = get_module_context(state)
+    this_gui = state.get_gui()
+
+    state_id = this_gui._get_client_id()  # type: ignore[attr-defined]
+    module_context = this_gui._get_locals_context()  # type: ignore[attr-defined]
     if not isinstance(state_id, str) or not isinstance(module_context, str):
         return
 
-    this_gui = state._gui
-
     def callback_on_exception(state: State, function_name: str, e: Exception):
-        if not this_gui._call_on_exception(function_name, e):
+        if not this_gui._call_on_exception(function_name, e):  # type: ignore[attr-defined]
             _warn(f"invoke_long_callback(): Exception raised in function {function_name}()", e)
 
     def callback_on_status(
@@ -392,17 +422,15 @@ def invoke_long_callback(
         function_name: t.Optional[str] = None,
         function_result: t.Optional[t.Any] = None,
     ):
-        if callable(user_status_function):
-            invoke_callback(
-                this_gui,
+        if _is_function(user_status_function):
+            this_gui.invoke_callback(
                 str(state_id),
-                user_status_function,
-                [status] + list(user_status_function_args) + [function_result],  # type: ignore
+                t.cast(t.Callable, user_status_function),
+                [status] + list(user_status_function_args) + [function_result],
                 str(module_context),
             )
         if e:
-            invoke_callback(
-                this_gui,
+            this_gui.invoke_callback(
                 str(state_id),
                 callback_on_exception,
                 (
@@ -427,5 +455,31 @@ def invoke_long_callback(
 
     thread = threading.Thread(target=user_function_in_thread, args=user_function_args)
     thread.start()
-    if isinstance(period, int) and period >= 500 and callable(user_status_function):
+    if isinstance(period, int) and period >= 500 and _is_function(user_status_function):
         thread_status(thread.name, period / 1000.0, 0)
+
+
+def query_local_storage(state: State, *keys: str) -> t.Union[str, t.Dict[str, str], None]:
+    """Retrieve values from the browser's local storage.
+
+    This function queries the local storage of the client identified by *state* and returns the
+    values associated with the specified keys. Local storage is a key-value store available in the
+    user's browser, typically manipulated by client-side code.
+
+    Arguments:
+        state (State^): The current user state as received in any callback.
+        *keys (string): One or more keys to retrieve values for from the client's local storage.
+
+    Returns:
+        The requested values from the browser's local storage.
+
+            - If a single key is provided (*keys* has a single element), this function returns the
+              corresponding value as a string.
+            - If multiple keys are provided, this function returns a dictionary mapping each key to
+              its value in the client's local storage.
+            - If no value is found for a key, that key will not appear in the dictionary.
+    """
+    if state and isinstance(state._gui, Gui):
+        return state._gui._query_local_storage(*keys)  # type: ignore[attr-defined]
+    _warn("'query_local_storage()' must be called in the context of a callback.")
+    return None

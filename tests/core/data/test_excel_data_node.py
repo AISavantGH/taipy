@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,17 +11,23 @@
 
 import os
 import pathlib
-from datetime import datetime
+import re
+import uuid
+from datetime import datetime, timedelta
 from time import sleep
 from typing import Dict
 
+import freezegun
 import numpy as np
 import pandas as pd
 import pytest
+from pandas.testing import assert_frame_equal
 
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
+from taipy import Scope
+from taipy.common.config import Config
+from taipy.core.common._utils import _normalize_path
 from taipy.core.data._data_manager import _DataManager
+from taipy.core.data._data_manager_factory import _DataManagerFactory
 from taipy.core.data.data_node_id import DataNodeId
 from taipy.core.data.excel import ExcelDataNode
 from taipy.core.exceptions.exceptions import (
@@ -29,6 +35,7 @@ from taipy.core.exceptions.exceptions import (
     InvalidExposedType,
     NonExistingExcelSheet,
 )
+from taipy.core.reason import NoFileToDownload, NotAFile
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -74,11 +81,10 @@ class TestExcelDataNode:
     def test_create(self):
         path = "data/node/path"
         sheet_names = ["sheet_name_1", "sheet_name_2"]
-        dn = ExcelDataNode(
-            "foo_bar",
-            Scope.SCENARIO,
-            properties={"path": path, "has_header": False, "sheet_name": sheet_names, "name": "super name"},
+        excel_dn_config = Config.configure_excel_data_node(
+            id="foo_bar", default_path=path, has_header=False, sheet_name="Sheet1", name="super name"
         )
+        dn = _DataManagerFactory._build_manager()._create_and_set(excel_dn_config, None, None)
         assert isinstance(dn, ExcelDataNode)
         assert dn.storage_type() == "excel"
         assert dn.config_id == "foo_bar"
@@ -91,8 +97,49 @@ class TestExcelDataNode:
         assert dn.job_ids == []
         assert not dn.is_ready_for_reading
         assert dn.path == path
-        assert dn.has_header is False
-        assert dn.sheet_name == sheet_names
+        assert dn.properties["has_header"] is False
+        assert dn.properties["sheet_name"] == "Sheet1"
+
+        excel_dn_config_1 = Config.configure_excel_data_node(
+            id="baz", default_path=path, has_header=True, sheet_name="Sheet1", exposed_type=MyCustomObject
+        )
+        dn_1 = _DataManagerFactory._build_manager()._create_and_set(excel_dn_config_1, None, None)
+        assert isinstance(dn_1, ExcelDataNode)
+        assert dn_1.properties["has_header"] is True
+        assert dn_1.properties["sheet_name"] == "Sheet1"
+        assert dn_1.properties["exposed_type"] == MyCustomObject
+
+        excel_dn_config_2 = Config.configure_excel_data_node(
+            id="baz",
+            default_path=path,
+            has_header=True,
+            sheet_name=sheet_names,
+            exposed_type={"Sheet1": "pandas", "Sheet2": "numpy"},
+        )
+        dn_2 = _DataManagerFactory._build_manager()._create_and_set(excel_dn_config_2, None, None)
+        assert isinstance(dn_2, ExcelDataNode)
+        assert dn_2.properties["sheet_name"] == sheet_names
+        assert dn_2.properties["exposed_type"] == {"Sheet1": "pandas", "Sheet2": "numpy"}
+
+        excel_dn_config_3 = Config.configure_excel_data_node(
+            id="baz", default_path=path, has_header=True, sheet_name=sheet_names, exposed_type=MyCustomObject
+        )
+        dn_3 = _DataManagerFactory._build_manager()._create_and_set(excel_dn_config_3, None, None)
+        assert isinstance(dn_3, ExcelDataNode)
+        assert dn_3.properties["sheet_name"] == sheet_names
+        assert dn_3.properties["exposed_type"] == MyCustomObject
+
+        excel_dn_config_4 = Config.configure_excel_data_node(
+            id="baz",
+            default_path=path,
+            has_header=True,
+            sheet_name=sheet_names,
+            exposed_type={"Sheet1": MyCustomObject, "Sheet2": MyCustomObject2},
+        )
+        dn_4 = _DataManagerFactory._build_manager()._create_and_set(excel_dn_config_4, None, None)
+        assert isinstance(dn_4, ExcelDataNode)
+        assert dn_4.properties["sheet_name"] == sheet_names
+        assert dn_4.properties["exposed_type"] == {"Sheet1": MyCustomObject, "Sheet2": MyCustomObject2}
 
     def test_get_user_properties(self, excel_file):
         dn_1 = ExcelDataNode("dn_1", Scope.SCENARIO, properties={"path": "data/node/path"})
@@ -132,12 +179,13 @@ class TestExcelDataNode:
     @pytest.mark.parametrize(
         ["properties", "exists"],
         [
-            ({}, False),
             ({"default_data": {"a": ["foo", "bar"]}}, True),
+            ({}, False),
         ],
     )
     def test_create_with_default_data(self, properties, exists):
-        dn = ExcelDataNode("foo", Scope.SCENARIO, DataNodeId("dn_id"), properties=properties)
+        dn = ExcelDataNode("foo", Scope.SCENARIO, DataNodeId(f"dn_id_{uuid.uuid4()}"), properties=properties)
+        assert dn.path == f"{Config.core.storage_folder}excels/{dn.id}.xlsx"
         assert os.path.exists(dn.path) is exists
 
     def test_read_write_after_modify_path(self):
@@ -159,7 +207,7 @@ class TestExcelDataNode:
             pathlib.Path(__file__).parent.resolve(), "data_sample/example_2.xlsx"
         )  # ["Sheet1", "Sheet2", "Sheet3"]
         dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"default_path": path, "exposed_type": MyCustomObject1})
-        assert dn.exposed_type == MyCustomObject1
+        assert dn.properties["exposed_type"] == MyCustomObject1
         dn.read()
         dn.path = new_path
         dn.read()
@@ -169,7 +217,7 @@ class TestExcelDataNode:
             Scope.SCENARIO,
             properties={"default_path": path, "exposed_type": MyCustomObject1, "sheet_name": ["Sheet4"]},
         )
-        assert dn.exposed_type == MyCustomObject1
+        assert dn.properties["exposed_type"] == MyCustomObject1
         with pytest.raises(NonExistingExcelSheet):
             dn.read()
 
@@ -219,14 +267,14 @@ class TestExcelDataNode:
             "foo", Scope.SCENARIO, properties={"default_path": "notexistyet.xlsx", "exposed_type": MyCustomObject1}
         )
         assert dn.path == "notexistyet.xlsx"
-        assert dn.exposed_type == MyCustomObject1
+        assert dn.properties["exposed_type"] == MyCustomObject1
         dn = ExcelDataNode(
             "foo",
             Scope.SCENARIO,
             properties={"default_path": "notexistyet.xlsx", "exposed_type": [MyCustomObject1, MyCustomObject2]},
         )
         assert dn.path == "notexistyet.xlsx"
-        assert dn.exposed_type == [MyCustomObject1, MyCustomObject2]
+        assert dn.properties["exposed_type"] == [MyCustomObject1, MyCustomObject2]
         dn = ExcelDataNode(
             "foo",
             Scope.SCENARIO,
@@ -236,12 +284,12 @@ class TestExcelDataNode:
             },
         )
         assert dn.path == "notexistyet.xlsx"
-        assert dn.exposed_type == {"Sheet1": MyCustomObject1, "Sheet2": MyCustomObject2}
+        assert dn.properties["exposed_type"] == {"Sheet1": MyCustomObject1, "Sheet2": MyCustomObject2}
 
     def test_exposed_type_default(self):
         path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
         dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"default_path": path, "sheet_name": "Sheet1"})
-        assert dn.exposed_type == "pandas"
+        assert dn.properties["exposed_type"] == "pandas"
         data = dn.read()
         assert isinstance(data, pd.DataFrame)
 
@@ -250,9 +298,103 @@ class TestExcelDataNode:
         dn = ExcelDataNode(
             "foo", Scope.SCENARIO, properties={"default_path": path, "exposed_type": "pandas", "sheet_name": "Sheet1"}
         )
-        assert dn.exposed_type == "pandas"
+        assert dn.properties["exposed_type"] == "pandas"
         data = dn.read()
         assert isinstance(data, pd.DataFrame)
+
+    def test_pandas_dataframe_exposed_type(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode(
+            "foo",
+            Scope.SCENARIO,
+            properties={"default_path": path, "exposed_type": pd.DataFrame, "sheet_name": "Sheet1"},
+        )
+        assert dn.properties["exposed_type"] == pd.DataFrame
+        data = dn.read()
+        assert isinstance(data, pd.DataFrame)
+
+    def test_pandas_dataframe_exposed_type_a(self):
+        import pandas
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode(
+            "foo",
+            Scope.SCENARIO,
+            properties={"default_path": path, "exposed_type": pandas.DataFrame, "sheet_name": "Sheet1"},
+        )
+        assert dn.properties["exposed_type"] == pandas.DataFrame
+        data = dn.read()
+        assert isinstance(data, pandas.DataFrame)
+
+    def test_pandas_dataframe_exposed_type_b(self):
+        from pandas import DataFrame
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode(
+            "foo",
+            Scope.SCENARIO,
+            properties={"default_path": path, "exposed_type": DataFrame, "sheet_name": "Sheet1"},
+        )
+        assert dn.properties["exposed_type"] == DataFrame
+        data = dn.read()
+        assert isinstance(data, DataFrame)
+
+    def test_pandas_dataframe_exposed_type_c(self):
+        from pandas import DataFrame as DF
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode(
+            "foo",
+            Scope.SCENARIO,
+            properties={"default_path": path, "exposed_type": DF, "sheet_name": "Sheet1"},
+        )
+        assert dn.properties["exposed_type"] == DF
+        data = dn.read()
+        assert isinstance(data, DF)
+
+    def test_numpy_ndarray_exposed_type(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode(
+            "foo", Scope.SCENARIO, properties={"default_path": path, "exposed_type": np.ndarray, "sheet_name": "Sheet1"}
+        )
+        assert dn.properties["exposed_type"] == np.ndarray
+        data = dn.read()
+        assert isinstance(data, np.ndarray)
+
+    def test_numpy_ndarray_exposed_type_a(self):
+        import numpy
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode(
+            "foo",
+            Scope.SCENARIO,
+            properties={"default_path": path, "exposed_type": numpy.ndarray, "sheet_name": "Sheet1"},
+        )
+        assert dn.properties["exposed_type"] == numpy.ndarray
+        data = dn.read()
+        assert isinstance(data, numpy.ndarray)
+
+    def test_numpy_ndarray_exposed_type_b(self):
+        from numpy import ndarray
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode(
+            "foo", Scope.SCENARIO, properties={"default_path": path, "exposed_type": ndarray, "sheet_name": "Sheet1"}
+        )
+        assert dn.properties["exposed_type"] == ndarray
+        data = dn.read()
+        assert isinstance(data, ndarray)
+
+    def test_numpy_ndarray_exposed_type_c(self):
+        from numpy import ndarray as nd_array
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode(
+            "foo", Scope.SCENARIO, properties={"default_path": path, "exposed_type": nd_array, "sheet_name": "Sheet1"}
+        )
+        assert dn.properties["exposed_type"] == nd_array
+        data = dn.read()
+        assert isinstance(data, nd_array)
 
     def test_complex_exposed_type_dict(self):
         # ["Sheet1", "Sheet2", "Sheet3", "Sheet4", "Sheet5"]
@@ -361,5 +503,152 @@ class TestExcelDataNode:
 
         dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": "pandas"})
 
-        assert ".data" not in dn.path.name
+        assert ".data" not in dn.path
         assert os.path.exists(dn.path)
+
+    def test_is_downloadable(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": "pandas"})
+        reasons = dn.is_downloadable()
+        assert reasons
+        assert reasons.reasons == ""
+
+    def test_is_not_downloadable_no_file(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/wrong_path.xlsx")
+        dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": "pandas"})
+        reasons = dn.is_downloadable()
+        assert not reasons
+        assert len(reasons._reasons) == 1
+        assert str(NoFileToDownload(_normalize_path(path), dn.id)) in reasons.reasons
+
+    def test_is_not_downloadable_not_a_file(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample")
+        dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": "pandas"})
+        reasons = dn.is_downloadable()
+        assert not reasons
+        assert len(reasons._reasons) == 1
+        assert str(NotAFile(_normalize_path(path), dn.id)) in reasons.reasons
+
+    def test_get_download_path(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.xlsx")
+        dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": "pandas"})
+        assert re.split(r"[\\/]", dn._get_downloadable_path()) == re.split(r"[\\/]", path)
+
+    def test_get_downloadable_path_with_not_existing_file(self):
+        dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": "NOT_EXISTING.xlsx", "exposed_type": "pandas"})
+        assert dn._get_downloadable_path() == ""
+
+    def test_upload(self, excel_file, tmpdir_factory):
+        old_xlsx_path = tmpdir_factory.mktemp("data").join("df.xlsx").strpath
+        old_data = pd.DataFrame([{"a": 0, "b": 1, "c": 2}, {"a": 3, "b": 4, "c": 5}])
+
+        dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": old_xlsx_path, "exposed_type": "pandas"})
+        dn.write(old_data)
+        old_last_edit_date = dn.last_edit_date
+
+        upload_content = pd.read_excel(excel_file)
+
+        with freezegun.freeze_time(old_last_edit_date + timedelta(seconds=1)):
+            dn._upload(excel_file)
+
+        assert_frame_equal(dn.read()["Sheet1"], upload_content)  # The data of dn should change to the uploaded content
+        assert dn.last_edit_date > old_last_edit_date
+        assert dn.path == _normalize_path(old_xlsx_path)  # The path of the dn should not change
+
+    def test_upload_with_upload_check_pandas(self, excel_file, tmpdir_factory):
+        old_xlsx_path = tmpdir_factory.mktemp("data").join("df.xlsx").strpath
+        old_data = pd.DataFrame([{"a": 0, "b": 1, "c": 2}, {"a": 3, "b": 4, "c": 5}])
+
+        dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": old_xlsx_path, "exposed_type": "pandas"})
+        dn.write(old_data)
+        old_last_edit_date = dn.last_edit_date
+
+        def check_data_column(upload_path, upload_data):
+            """Check if the uploaded data has the correct file format and
+            the sheet named "Sheet1" has the correct columns.
+            """
+            return upload_path.endswith(".xlsx") and upload_data["Sheet1"].columns.tolist() == ["a", "b", "c"]
+
+        not_exists_xlsx_path = tmpdir_factory.mktemp("data").join("not_exists.xlsx").strpath
+        reasons = dn._upload(not_exists_xlsx_path, upload_checker=check_data_column)
+        assert bool(reasons) is False
+        assert (
+            str(list(reasons._reasons[dn.id])[0]) == "The uploaded file 'not_exists.xlsx' can not be read,"
+            f" therefore is not a valid data file for data node '{dn.id}'"
+        )
+
+        not_xlsx_path = tmpdir_factory.mktemp("data").join("wrong_format_df.xlsm").strpath
+        old_data.to_excel(not_xlsx_path, index=False)
+        # The upload should fail when the file is not a xlsx
+        reasons = dn._upload(not_xlsx_path, upload_checker=check_data_column)
+        assert bool(reasons) is False
+        assert (
+            str(list(reasons._reasons[dn.id])[0])
+            == f"The uploaded file 'wrong_format_df.xlsm' has invalid data for data node '{dn.id}'"
+        )
+
+        wrong_format_xlsx_path = tmpdir_factory.mktemp("data").join("wrong_format_df.xlsx").strpath
+        pd.DataFrame([{"a": 1, "b": 2, "d": 3}, {"a": 4, "b": 5, "d": 6}]).to_excel(wrong_format_xlsx_path, index=False)
+        # The upload should fail when check_data_column() return False
+        reasons = dn._upload(wrong_format_xlsx_path, upload_checker=check_data_column)
+        assert bool(reasons) is False
+        assert (
+            str(list(reasons._reasons[dn.id])[0])
+            == f"The uploaded file 'wrong_format_df.xlsx' has invalid data for data node '{dn.id}'"
+        )
+
+        assert_frame_equal(dn.read()["Sheet1"], old_data)  # The content of the dn should not change when upload fails
+        assert dn.last_edit_date == old_last_edit_date  # The last edit date should not change when upload fails
+        assert dn.path == _normalize_path(old_xlsx_path)  # The path of the dn should not change
+
+        # The upload should succeed when check_data_column() return True
+        assert dn._upload(excel_file, upload_checker=check_data_column)
+
+    def test_upload_with_upload_check_numpy(self, tmpdir_factory):
+        old_excel_path = tmpdir_factory.mktemp("data").join("df.xlsx").strpath
+        old_data = np.array([[1, 2, 3], [4, 5, 6]])
+
+        new_excel_path = tmpdir_factory.mktemp("data").join("new_upload_data.xlsx").strpath
+        new_data = np.array([[1, 2, 3], [4, 5, 6]])
+        pd.DataFrame(new_data).to_excel(new_excel_path, index=False)
+
+        dn = ExcelDataNode("foo", Scope.SCENARIO, properties={"path": old_excel_path, "exposed_type": "numpy"})
+        dn.write(old_data)
+        old_last_edit_date = dn.last_edit_date
+
+        def check_data_is_positive(upload_path, upload_data):
+            return upload_path.endswith(".xlsx") and np.all(upload_data["Sheet1"] > 0)
+
+        not_exists_xlsx_path = tmpdir_factory.mktemp("data").join("not_exists.xlsx").strpath
+        reasons = dn._upload(not_exists_xlsx_path, upload_checker=check_data_is_positive)
+        assert bool(reasons) is False
+        assert (
+            str(list(reasons._reasons[dn.id])[0]) == "The uploaded file 'not_exists.xlsx' can not be read,"
+            f" therefore is not a valid data file for data node '{dn.id}'"
+        )
+
+        wrong_format_not_excel_path = tmpdir_factory.mktemp("data").join("wrong_format_df.xlsm").strpath
+        pd.DataFrame(old_data).to_excel(wrong_format_not_excel_path, index=False)
+        # The upload should fail when the file is not an Excel
+        reasons = dn._upload(wrong_format_not_excel_path, upload_checker=check_data_is_positive)
+        assert bool(reasons) is False
+        assert (
+            str(list(reasons._reasons[dn.id])[0])
+            == f"The uploaded file 'wrong_format_df.xlsm' has invalid data for data node '{dn.id}'"
+        )
+
+        not_xlsx_path = tmpdir_factory.mktemp("data").join("wrong_format_df.xlsx").strpath
+        pd.DataFrame(np.array([[-1, 2, 3], [-4, -5, -6]])).to_excel(not_xlsx_path, index=False)
+        # The upload should fail when check_data_is_positive() return False
+        reasons = dn._upload(not_xlsx_path, upload_checker=check_data_is_positive)
+        assert (
+            str(list(reasons._reasons[dn.id])[0])
+            == f"The uploaded file 'wrong_format_df.xlsx' has invalid data for data node '{dn.id}'"
+        )
+
+        np.array_equal(dn.read()["Sheet1"], old_data)  # The content of the dn should not change when upload fails
+        assert dn.last_edit_date == old_last_edit_date  # The last edit date should not change when upload fails
+        assert dn.path == _normalize_path(old_excel_path)  # The path of the dn should not change
+
+        # The upload should succeed when check_data_is_positive() return True
+        assert dn._upload(new_excel_path, upload_checker=check_data_is_positive)

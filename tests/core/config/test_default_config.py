@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -8,14 +8,13 @@
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
-from taipy.config._config import _Config
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
-from taipy.config.global_app.global_app_config import GlobalAppConfig
+from taipy import Scope
+from taipy.common.config import Config
+from taipy.common.config._config import _Config
+from taipy.common.config.global_app.global_app_config import GlobalAppConfig
 from taipy.core.config import CoreSection
 from taipy.core.config.data_node_config import DataNodeConfig
 from taipy.core.config.job_config import JobConfig
-from taipy.core.config.migration_config import MigrationConfig
 from taipy.core.config.scenario_config import ScenarioConfig
 from taipy.core.config.task_config import TaskConfig
 
@@ -70,12 +69,6 @@ def _test_default_scenario_config(scenario_config: ScenarioConfig):
     assert len(scenario_config.properties) == 0  # type: ignore
 
 
-def _test_default_version_migration_config(version_migration_config: MigrationConfig):
-    assert version_migration_config is not None
-    assert version_migration_config.migration_fcts == {}
-    assert len(version_migration_config.properties) == 0  # type: ignore
-
-
 def _test_default_global_app_config(global_config: GlobalAppConfig):
     assert global_config is not None
     assert not global_config.notification
@@ -90,16 +83,12 @@ def test_default_configuration():
     _test_default_global_app_config(GlobalAppConfig().default_config())
 
     assert default_config._unique_sections is not None
-    assert len(default_config._unique_sections) == 3
+    assert len(default_config._unique_sections) == 2
     assert len(default_config._sections) == 3
 
     _test_default_job_config(default_config._unique_sections[JobConfig.name])
     _test_default_job_config(Config.job_config)
     _test_default_job_config(JobConfig().default_config())
-
-    _test_default_version_migration_config(default_config._unique_sections[MigrationConfig.name])
-    _test_default_version_migration_config(Config.migration_functions)
-    _test_default_version_migration_config(MigrationConfig.default_config())
 
     _test_default_core_section(default_config._unique_sections[CoreSection.name])
     _test_default_core_section(Config.core)

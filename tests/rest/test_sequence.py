@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,7 +11,6 @@
 
 from unittest import mock
 
-import pytest
 from flask import url_for
 
 from taipy.core.scenario._scenario_manager_factory import _ScenarioManagerFactory
@@ -37,8 +36,9 @@ def test_delete_sequence(client):
     rep = client.get(user_url)
     assert rep.status_code == 404
 
-    with mock.patch("taipy.core.sequence._sequence_manager._SequenceManager._delete"), mock.patch(
-        "taipy.core.sequence._sequence_manager._SequenceManager._get"
+    with (
+        mock.patch("taipy.core.sequence._sequence_manager._SequenceManager._delete"),
+        mock.patch("taipy.core.sequence._sequence_manager._SequenceManager._get"),
     ):
         # test get_sequence
         rep = client.delete(url_for("api.sequence_by_id", sequence_id="foo"))
@@ -74,7 +74,7 @@ def test_get_all_sequences(client, default_scenario_config_list):
     for ds in range(10):
         with mock.patch("taipy.rest.api.resources.scenario.ScenarioList.fetch_config") as config_mock:
             config_mock.return_value = default_scenario_config_list[ds]
-            scenario_url = url_for("api.scenarios", config_id=config_mock.name)
+            scenario_url = url_for("api.scenarios", config_id=default_scenario_config_list[ds].name)
             client.post(scenario_url)
 
     sequences_url = url_for("api.sequences")
@@ -85,16 +85,20 @@ def test_get_all_sequences(client, default_scenario_config_list):
     assert len(results) == 10
 
 
-@pytest.mark.xfail()
-def test_execute_sequence(client, default_sequence):
+def test_execute_sequence(client, default_scenario):
     # test 404
     user_url = url_for("api.sequence_submit", sequence_id="foo")
     rep = client.post(user_url)
     assert rep.status_code == 404
 
-    with mock.patch("taipy.core.sequence._sequence_manager._SequenceManager._get") as manager_mock:
-        manager_mock.return_value = default_sequence
+    _ScenarioManagerFactory._build_manager()._set(default_scenario)
+    with mock.patch("taipy.core.scenario._scenario_manager._ScenarioManager._get") as config_mock:
+        config_mock.return_value = default_scenario
+        sequences_url = url_for("api.sequences")
+        seq = client.post(
+            sequences_url, json={"scenario_id": default_scenario.id, "sequence_name": "sequence", "tasks": []}
+        )
 
-        # test get_sequence
-        rep = client.post(url_for("api.sequence_submit", sequence_id="foo"))
-        assert rep.status_code == 200
+    # test submit
+    rep = client.post(url_for("api.sequence_submit", sequence_id=seq.json["sequence"]["id"]))
+    assert rep.status_code == 200

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,31 +11,32 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import React, { CSSProperties, MouseEvent, SyntheticEvent, useCallback, useEffect, useState } from "react";
+import React, { MouseEvent, SyntheticEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Box from "@mui/material/Box";
 import Switch from "@mui/material/Switch";
-import Typography from "@mui/material/Typography";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
 
+import { FormControlLabel, SxProps } from "@mui/material";
 import { createSendUpdateAction } from "../../context/taipyReducers";
-import ThemeToggle from "./ThemeToggle";
-import { LovProps, useLovListMemo } from "./lovUtils";
 import { useClassNames, useDispatch, useDynamicProperty, useModule } from "../../utils/hooks";
-import { emptyStyle, getSuffixedClassNames, getUpdateVar } from "./utils";
 import { Icon, IconAvatar } from "../../utils/icon";
-import { FormControlLabel } from "@mui/material";
+import { getComponentClassName } from "./TaipyStyle";
+import ThemeToggle, { emptyStyle } from "./ThemeToggle";
+import { LovProps, useLovListMemo } from "./lovUtils";
+import { getCssSize, getSuffixedClassNames, getUpdateVar } from "./utils";
 
-const groupSx = { verticalAlign: "middle" };
+const baseGroupSx = { verticalAlign: "middle" };
 
 interface ToggleProps extends LovProps<string> {
-    style?: CSSProperties;
+    style?: SxProps;
     label?: string;
-    unselectedValue?: string;
     allowUnselect?: boolean;
     mode?: string;
-    isSwitch? : boolean;
+    isSwitch?: boolean;
+    width?: string | number;
 }
 
 const Toggle = (props: ToggleProps) => {
@@ -47,14 +48,13 @@ const Toggle = (props: ToggleProps) => {
         propagate = true,
         lov,
         defaultLov = "",
-        unselectedValue = "",
         updateVars = "",
         valueById,
         mode = "",
         isSwitch = false,
     } = props;
     const dispatch = useDispatch();
-    const [value, setValue] = useState(props.defaultValue);
+    const [value, setValue] = useState<string | null | undefined>(props.defaultValue);
     const [bVal, setBVal] = useState(() =>
         typeof props.defaultValue === "boolean"
             ? props.defaultValue
@@ -70,6 +70,11 @@ const Toggle = (props: ToggleProps) => {
 
     const lovList = useLovListMemo(lov, defaultLov);
 
+    const boxSx = useMemo(
+        () => (props.width ? ({ ...style, width: getCssSize(props.width) } as SxProps) : style),
+        [props.width, style]
+    );
+
     const changeValue = useCallback(
         (evt: MouseEvent, val: string) => {
             if (!props.allowUnselect && val === null) {
@@ -78,7 +83,7 @@ const Toggle = (props: ToggleProps) => {
             dispatch(
                 createSendUpdateAction(
                     updateVarName,
-                    val === null ? unselectedValue : val,
+                    val,
                     module,
                     props.onChange,
                     propagate,
@@ -86,17 +91,7 @@ const Toggle = (props: ToggleProps) => {
                 )
             );
         },
-        [
-            unselectedValue,
-            updateVarName,
-            propagate,
-            dispatch,
-            updateVars,
-            valueById,
-            props.onChange,
-            props.allowUnselect,
-            module,
-        ]
+        [updateVarName, propagate, dispatch, updateVars, valueById, props.onChange, props.allowUnselect, module]
     );
 
     const changeSwitchValue = useCallback(
@@ -112,7 +107,7 @@ const Toggle = (props: ToggleProps) => {
     return mode.toLowerCase() === "theme" ? (
         <ThemeToggle {...props} />
     ) : (
-        <Box id={id} sx={style} className={className}>
+        <Box id={id} sx={boxSx} className={`${className} ${getComponentClassName(props.children)}`}>
             {label && !isSwitch ? <Typography>{label}</Typography> : null}
             <Tooltip title={hover || ""}>
                 {isSwitch ? (
@@ -125,7 +120,14 @@ const Toggle = (props: ToggleProps) => {
                         className={getSuffixedClassNames(className, "-switch")}
                     />
                 ) : (
-                    <ToggleButtonGroup value={value} exclusive onChange={changeValue} disabled={!active} sx={groupSx}>
+                    <ToggleButtonGroup
+                        value={value}
+                        exclusive
+                        onChange={changeValue}
+                        disabled={!active}
+                        sx={baseGroupSx}
+                        fullWidth={!!props.width}
+                    >
                         {lovList &&
                             lovList.map((v) => (
                                 <ToggleButton value={v.id} key={v.id}>
@@ -139,6 +141,7 @@ const Toggle = (props: ToggleProps) => {
                     </ToggleButtonGroup>
                 )}
             </Tooltip>
+            {props.children}
         </Box>
     );
 };

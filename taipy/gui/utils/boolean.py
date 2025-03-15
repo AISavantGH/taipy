@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,7 +12,7 @@
 import typing as t
 
 
-def _is_boolean_true(s: t.Union[bool, str]) -> bool:
+def _is_true(s: t.Union[bool, str]) -> bool:
     return (
         s
         if isinstance(s, bool)

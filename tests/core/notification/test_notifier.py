@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,14 +11,16 @@
 
 from queue import SimpleQueue
 
-from taipy.config import Config, Frequency
+from taipy.common.config import Config
 from taipy.core import taipy as tp
 from taipy.core._version._version_manager_factory import _VersionManagerFactory
+from taipy.core.common.frequency import Frequency
 from taipy.core.notification import EventEntityType, EventOperation
 from taipy.core.notification._topic import _Topic
 from taipy.core.notification.event import Event
 from taipy.core.notification.notifier import Notifier
 from taipy.core.scenario._scenario_manager_factory import _ScenarioManagerFactory
+from taipy.core.submission.submission_status import SubmissionStatus
 
 
 def test_register():
@@ -742,6 +744,21 @@ def test_publish_submission_event():
         and event.attribute_name == expected_attribute_names[i]
         for i, event in enumerate(published_events)
     )
+    assert "job_triggered_submission_status_changed" in published_events[4].metadata
+    assert published_events[4].metadata["job_triggered_submission_status_changed"] == job.id
+
+    # Test updating submission_status manually will not add the job_triggered_submission_status_changed
+    # to the metadata as no job was used to update the submission_status
+    submission.submission_status = SubmissionStatus.CANCELED
+
+    assert registration_queue.qsize() == 1
+    published_event = registration_queue.get()
+
+    assert published_event.entity_type == EventEntityType.SUBMISSION
+    assert published_event.entity_id == submission.id
+    assert published_event.operation == EventOperation.UPDATE
+    assert published_event.attribute_name == "submission_status"
+    assert "job_triggered_submission_status_changed" not in published_event.metadata
 
 
 def test_publish_deletion_event():

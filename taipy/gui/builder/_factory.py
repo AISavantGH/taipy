@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -16,8 +16,8 @@ from .._renderers.factory import _Factory
 
 class _BuilderFactory(_Factory):
     @staticmethod
-    def create_element(gui, element_type: str, properties: t.Dict[str, t.Any]) -> t.Tuple[str, str]:
+    def create_element(gui, element_type: str, properties: t.Dict[str, t.Any]) -> t.Union[t.Tuple[str, str], str]:
         builder_html = _Factory.call_builder(gui, element_type, properties, True)
         if builder_html is None:
             return f"<div>INVALID SYNTAX - Element is '{element_type}'", "div"
-        return builder_html  # type: ignore
+        return builder_html

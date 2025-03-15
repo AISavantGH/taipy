@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -18,11 +18,11 @@ from typing import cast
 
 import pytest
 
-from taipy.config import Config
-from taipy.config.common.scope import Scope
+from taipy.common.config import Config
 from taipy.core._orchestrator._dispatcher import _StandaloneJobDispatcher
 from taipy.core._orchestrator._orchestrator import _Orchestrator
 from taipy.core._orchestrator._orchestrator_factory import _OrchestratorFactory
+from taipy.core.common.scope import Scope
 from taipy.core.config.job_config import JobConfig
 from taipy.core.data._data_manager import _DataManager
 from taipy.core.scenario.scenario import Scenario
@@ -286,7 +286,7 @@ def test_blocked_submittable():
         # currently used since the previous process is not used anymore
         assert len(_Orchestrator.blocked_jobs) == 0
         assert_submission_status(submission, SubmissionStatus.RUNNING)
-        assert dispatcher._nb_available_workers == 1 # Still one process
+        assert dispatcher._nb_available_workers == 1  # Still one process
     assert_true_after_time(job_2.is_completed)  # job 2 unlocked so it can complete
     assert _DataManager._get(task_2.baz.id).is_ready_for_reading  # baz becomes ready
     assert _DataManager._get(task_2.baz.id).read() == 6  # the data is computed and written

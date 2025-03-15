@@ -1,7 +1,7 @@
 # Taipy templates
 
 ## License
-Copyright 2021-2024 Avaiga Private Limited
+Copyright 2021-2025 Avaiga Private Limited
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
 except in compliance with the License. You may obtain a copy of the License at
@@ -26,7 +26,7 @@ and limitations under the License.
 Taipy is a Python library for creating Business Applications. More information on our
 [website](https://www.taipy.io).
 
-Taipy templates is a repository that contains templates and scaffoldings created and
+Taipy templates is a repository that contains application templates created and
 maintained by Taipy. It helps users getting started with a simple and ready-to-go application.
 
 A more in depth documentation of taipy can be found [here](https://docs.taipy.io).
@@ -38,7 +38,7 @@ taipy create
 ```
 or
 ```bash
-taipy create --template "default"
+taipy create --application "default"
 ```
 
 After providing necessary information, your new application is created in the current
@@ -46,25 +46,23 @@ working directory.
 
 ## Contributing
 
-Want to help build _Taipy_? Check out our [`CONTRIBUTING.md`](CONTRIBUTING.md) file.
+Want to help build *Taipy*? Check out our [`CONTRIBUTING.md`](../../CONTRIBUTING.md) file.
 
 ## Code of conduct
 
-Want to be part of the _Taipy_ community? Check out our
-[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) file.
+Want to be part of the *Taipy* community? Check out our
+[`CODE_OF_CONDUCT.md`](../../CODE_OF_CONDUCT.md) file.
 
 ## Directory Structure
 
 - `taipy/`:
   - `templates/`: Contains templates, each in a dedicated sub-folder with the following structure:
     - `<template-name>/`: Internal package for Taipy data backup mechanism.
-      - `{{cookiecutter.__root_folder_name}}/`: The root folder of the application created using this template.
+      - `{{cookiecutter.__root_folder}}/`: The root folder of the application created using this template.
       - `hooks/`: Contains hooks to be executed before and after the application is created.
       - `cookiecutter.json`: The configuration file for the template.
-    - `CODE_OF_CONDUCT.md`: Code of conduct for members and contributors of _taipy-templates_.
-    - `CONTRIBUTING.md`: Instructions to contribute to _taipy-templates_.
     - `LICENSE`: The Apache 2.0 License.
     - `README.md`: Current file.
-    - `setup.py`: The setup script managing building, distributing, and installing _taipy-templates_.
+    - `setup.py`: The setup script managing building, distributing, and installing *taipy-templates*.
 - `tests/`:
   - `templates/`: Unit tests following the `taipy/templates/` structure.

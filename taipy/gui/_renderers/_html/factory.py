@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -16,8 +16,10 @@ from ..factory import _Factory
 
 class _HtmlFactory(_Factory):
     @staticmethod
-    def create_element(gui, namespace: str, control_type: str, all_properties: t.Dict[str, str]) -> t.Tuple[str, str]:
+    def create_element(
+        gui, namespace: str, control_type: str, all_properties: t.Dict[str, str]
+    ) -> t.Union[t.Tuple[str, str], str]:
         builder_html = _Factory.call_builder(gui, f"{namespace}.{control_type}", all_properties, True)
         if builder_html is None:
             return f"<div>INVALID SYNTAX - Control is '{namespace}:{control_type}'</div>", "div"
-        return builder_html  # type: ignore
+        return builder_html

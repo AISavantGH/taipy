@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -18,7 +18,7 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
-from taipy.config.common.scope import Scope
+from taipy import Scope
 from taipy.core.data.parquet import ParquetDataNode
 
 
@@ -175,7 +175,7 @@ class TestWriteParquetDataNode:
                 "write_kwargs": {"compression": comp2},
             },
         )
-        dn.write_with_kwargs(df, compression=comp1)
+        dn._write_with_kwargs(df, compression=comp1)
         df.to_parquet(path=temp_file_2_path, compression=comp1, engine=engine)
         with open(temp_file_2_path, "rb") as tf:
             with pathlib.Path(temp_file_path).open("rb") as f:

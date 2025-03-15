@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,16 +13,22 @@ from unittest import mock
 
 import pytest
 
-from taipy.config import Frequency
-from taipy.config.common.scope import Scope
-from taipy.config.exceptions.exceptions import InvalidConfigurationId
+from taipy import Scope
+from taipy.common.config import Config
+from taipy.common.config.exceptions.exceptions import InvalidConfigurationId
+from taipy.core import create_scenario
 from taipy.core.common._utils import _Subscriber
+from taipy.core.common.frequency import Frequency
 from taipy.core.cycle._cycle_manager_factory import _CycleManagerFactory
 from taipy.core.cycle.cycle import Cycle, CycleId
 from taipy.core.data._data_manager_factory import _DataManagerFactory
 from taipy.core.data.in_memory import DataNode, InMemoryDataNode
 from taipy.core.data.pickle import PickleDataNode
-from taipy.core.exceptions.exceptions import SequenceAlreadyExists, SequenceTaskDoesNotExistInScenario
+from taipy.core.exceptions.exceptions import (
+    AttributeKeyAlreadyExisted,
+    SequenceAlreadyExists,
+    SequenceTaskDoesNotExistInScenario,
+)
 from taipy.core.scenario._scenario_manager_factory import _ScenarioManagerFactory
 from taipy.core.scenario.scenario import Scenario
 from taipy.core.scenario.scenario_id import ScenarioId
@@ -30,6 +36,21 @@ from taipy.core.sequence.sequence import Sequence
 from taipy.core.sequence.sequence_id import SequenceId
 from taipy.core.task._task_manager_factory import _TaskManagerFactory
 from taipy.core.task.task import Task, TaskId
+
+
+def test_scenario_equals(scenario):
+    scenario_manager = _ScenarioManagerFactory()._build_manager()
+
+    scenario_id = scenario.id
+    scenario_manager._set(scenario)
+
+    # To test if instance is same type
+    task = Task("task", {}, print, [], [], scenario_id)
+
+    scenario_2 = scenario_manager._get(scenario_id)
+    assert scenario == scenario_2
+    assert scenario != scenario_id
+    assert scenario != task
 
 
 def test_create_primary_scenario(cycle):
@@ -41,7 +62,7 @@ def test_create_primary_scenario(cycle):
     assert scenario.data_nodes == {}
     assert scenario.sequences == {}
     assert scenario.properties == {"key": "value"}
-    assert scenario.key == "value"
+    assert scenario.properties["key"] == "value"
     assert scenario.creation_date is not None
     assert scenario.is_primary
     assert scenario.cycle == cycle
@@ -139,6 +160,18 @@ def test_create_scenario_and_add_sequences():
     assert scenario.sequence_1 == scenario.sequences["sequence_1"]
     assert scenario.sequence_2 == scenario.sequences["sequence_2"]
     assert scenario.sequences == {"sequence_1": scenario.sequence_1, "sequence_2": scenario.sequence_2}
+
+
+def test_get_set_attribute():
+    dn_cfg = Config.configure_data_node("bar")
+    s_cfg = Config.configure_scenario("foo", additional_data_node_configs=[dn_cfg])
+    scenario = create_scenario(s_cfg)
+
+    scenario.key = "value"
+    assert scenario.key == "value"
+
+    with pytest.raises(AttributeKeyAlreadyExisted):
+        scenario.bar = "KeyAlreadyUsed"
 
 
 def test_create_scenario_overlapping_sequences():
@@ -438,11 +471,11 @@ def test_update_sequence(data_node):
 
     assert len(scenario.sequences) == 1
     assert scenario.sequences["seq_1"].tasks == {"foo": task_1}
-    assert scenario.sequences["seq_1"].name == "seq_1"
+    assert scenario.sequences["seq_1"].properties["name"] == "seq_1"
     scenario.update_sequence("seq_1", [task_2], {"new_key": "new_value"}, [])
     assert len(scenario.sequences) == 1
     assert scenario.sequences["seq_1"].tasks == {"bar": task_2}
-    assert scenario.sequences["seq_1"].name == "seq_1"
+    assert scenario.sequences["seq_1"].properties["name"] == "seq_1"
     assert scenario.sequences["seq_1"].properties["new_key"] == "new_value"
 
 
@@ -450,6 +483,7 @@ def test_add_rename_and_remove_sequences_within_context(data_node):
     task_1 = Task("task_1", {}, print, output=[data_node])
     task_2 = Task("task_2", {}, print, input=[data_node])
     _TaskManagerFactory._build_manager()._set(task_1)
+    _TaskManagerFactory._build_manager()._set(task_2)
     scenario = Scenario(config_id="scenario", tasks={task_1, task_2}, properties={})
     _ScenarioManagerFactory._build_manager()._set(scenario)
 
@@ -475,13 +509,13 @@ def test_add_rename_and_remove_sequences_within_context(data_node):
 def test_add_property_to_scenario():
     scenario = Scenario("foo", set(), {"key": "value"})
     assert scenario.properties == {"key": "value"}
-    assert scenario.key == "value"
+    assert scenario.properties["key"] == "value"
 
     scenario.properties["new_key"] = "new_value"
 
     assert scenario.properties == {"key": "value", "new_key": "new_value"}
-    assert scenario.key == "value"
-    assert scenario.new_key == "new_value"
+    assert scenario.properties["key"] == "value"
+    assert scenario.properties["new_key"] == "new_value"
 
 
 def test_add_cycle_to_scenario(cycle):
@@ -966,34 +1000,55 @@ def test_get_inputs_outputs_intermediate_data_nodes():
 
 
 def test_is_ready_to_run():
-    data_node_1 = PickleDataNode("foo", Scope.SCENARIO, "s1", properties={"default_data": 1})
-    data_node_2 = PickleDataNode("bar", Scope.SCENARIO, "s2", properties={"default_data": 2})
-    data_node_4 = PickleDataNode("qux", Scope.SCENARIO, "s4", properties={"default_data": 4})
-    data_node_5 = PickleDataNode("quux", Scope.SCENARIO, "s5", properties={"default_data": 5})
-    data_node_6 = PickleDataNode("quuz", Scope.SCENARIO, "s6", properties={"default_data": 6})
-    data_node_7 = PickleDataNode("corge", Scope.SCENARIO, "s7", properties={"default_data": 7})
-    data_node_8 = PickleDataNode("d8", Scope.SCENARIO, "s8", properties={"default_data": 8})
-    data_node_9 = PickleDataNode("d9", Scope.SCENARIO, "s9", properties={"default_data": 9})
-    task_1 = Task("grault", {}, print, [data_node_1, data_node_2], [data_node_4], TaskId("t1"))
-    task_2 = Task("garply", {}, print, [data_node_6], [data_node_5], TaskId("t2"))
-    task_3 = Task("waldo", {}, print, [data_node_5, data_node_4], id=TaskId("t3"))
-    task_4 = Task("fred", {}, print, [data_node_4], [data_node_7], TaskId("t4"))
-    task_5 = Task("t5", {}, print, [data_node_8], [data_node_9], TaskId("t5"))
-    task_6 = Task("t6", {}, print, [data_node_7, data_node_9], id=TaskId("t6"))
-    scenario = Scenario("scenario", {task_1, task_2, task_3, task_4, task_5, task_6}, {}, set(), ScenarioId("s1"))
-    # s1 ---      s6 ---> t2 ---> s5
+    task_1_id, task_2_id, task_3_id, task_4_id, task_5_id, task_6_id = (
+        TaskId("TASK_t1"),
+        TaskId("TASK_t2"),
+        TaskId("TASK_t3"),
+        TaskId("TASK_t4"),
+        TaskId("TASK_t5"),
+        TaskId("TASK_t6"),
+    )
+    sc_id = ScenarioId("SCENARIO_s1")
+    data_node_1 = PickleDataNode("foo", Scope.SCENARIO, "d1", parent_ids={task_1_id}, properties={"default_data": 1})
+    data_node_2 = PickleDataNode("bar", Scope.SCENARIO, "d2", parent_ids={task_1_id}, properties={"default_data": 2})
+    data_node_4 = PickleDataNode(
+        "qux", Scope.SCENARIO, "d4", parent_ids={task_1_id, task_4_id, task_3_id}, properties={"default_data": 4}
+    )
+    data_node_5 = PickleDataNode(
+        "quux", Scope.SCENARIO, "d5", parent_ids={task_2_id, task_3_id}, properties={"default_data": 5}
+    )
+    data_node_6 = PickleDataNode("quuz", Scope.SCENARIO, "d6", parent_ids={task_2_id}, properties={"default_data": 6})
+    data_node_7 = PickleDataNode(
+        "corge", Scope.SCENARIO, "d7", parent_ids={task_4_id, task_6_id}, properties={"default_data": 7}
+    )
+    data_node_8 = PickleDataNode("d8", Scope.SCENARIO, "d8", parent_ids={task_5_id}, properties={"default_data": 8})
+    data_node_9 = PickleDataNode(
+        "d9", Scope.SCENARIO, "d9", parent_ids={task_5_id, task_6_id}, properties={"default_data": 9}
+    )
+    task_1 = Task("grault", {}, print, [data_node_1, data_node_2], [data_node_4], id=task_1_id, parent_ids={sc_id})
+    task_2 = Task("garply", {}, print, [data_node_6], [data_node_5], id=task_2_id, parent_ids={sc_id})
+    task_3 = Task("waldo", {}, print, [data_node_5, data_node_4], id=task_3_id, parent_ids={sc_id})
+    task_4 = Task("fred", {}, print, [data_node_4], [data_node_7], id=task_4_id, parent_ids={sc_id})
+    task_5 = Task("t5", {}, print, [data_node_8], [data_node_9], id=task_5_id, parent_ids={sc_id})
+    task_6 = Task("t6", {}, print, [data_node_7, data_node_9], id=task_6_id, parent_ids={sc_id})
+    scenario = Scenario("scenario", {task_1, task_2, task_3, task_4, task_5, task_6}, {}, set(), scenario_id=sc_id)
+    # d1 ---      d6 ---> t2 ---> d5
     #       |                     |
     #       |---> t1 ---|      -----> t3
     #       |           |      |
-    # s2 ---             ---> s4 ---> t4 ---> s7 ---> t6
+    # d2 ---             ---> d4 ---> t4 ---> d7 ---> t6
     #                                              |
-    # s8 -------> t5 -------> s9 ------------------
+    # d8 -------> t5 -------> d9 ------------------
     assert scenario.get_inputs() == {data_node_1, data_node_2, data_node_6, data_node_8}
 
     data_manager = _DataManagerFactory._build_manager()
     data_manager._delete_all()
     for dn in [data_node_1, data_node_2, data_node_4, data_node_5, data_node_6, data_node_7, data_node_8, data_node_9]:
         data_manager._set(dn)
+    task_manager = _TaskManagerFactory._build_manager()
+    for task in [task_1, task_2, task_3, task_4, task_5, task_6]:
+        task_manager._set(task)
+    _ScenarioManagerFactory._build_manager()._set(scenario)
 
     assert scenario.is_ready_to_run()
 
@@ -1484,3 +1539,25 @@ def test_check_consistency():
     task_5 = Task("bob", {}, print, [data_node_5], [data_node_3], TaskId("t5"))
     scenario_9 = Scenario("scenario_9", [task_1, task_2, task_3, task_4, task_5], {}, [], scenario_id=ScenarioId("s8"))
     assert scenario_9._is_consistent()
+
+
+def test_check_inconsistency(caplog):
+    class FakeDataNode:
+        config_id = "config_id_of_a_fake_dn"
+
+    data_node_1 = InMemoryDataNode("foo", Scope.SCENARIO, "s1")
+    data_node_2 = InMemoryDataNode("bar", Scope.SCENARIO, "s2")
+
+    task_1 = Task("grault", {}, print, [data_node_1, data_node_2], [FakeDataNode()], TaskId("t1"))
+    task_2 = Task("garply", {}, print, [data_node_1], [data_node_2], id=TaskId("t2"))
+    scenario_1 = Scenario("scenario_1", [task_1, task_2], {}, [], scenario_id=ScenarioId("s1"))
+    assert not scenario_1._is_consistent()
+    assert (
+        'Invalid edge detected in scenario "s1": left node Task "grault" and right node FakeDataNode'
+        " must connect a Task and a DataNode" in caplog.text
+    )
+
+    task_3 = Task("waldo", {}, print, [data_node_2], [data_node_1], id=TaskId("t3"))
+    scenario_2 = Scenario("scenario_2", [task_2, task_3], {}, [], scenario_id=ScenarioId("s2"))
+    assert not scenario_2._is_consistent()
+    assert 'The DAG of scenario "s2" is not a directed acyclic graph' in caplog.text

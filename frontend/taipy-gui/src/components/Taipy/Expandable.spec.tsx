@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -24,7 +24,7 @@ describe("Expandable Component", () => {
     it("renders", async () => {
         const { getByText } = render(<Expandable title="foo">bar</Expandable>);
         const elt = getByText("foo");
-        expect(elt.tagName).toBe("DIV");
+        expect(elt.tagName).toBe("SPAN");
     });
     it("displays the right info for string", async () => {
         const { getByText } = render(
@@ -33,7 +33,7 @@ describe("Expandable Component", () => {
             </Expandable>
         );
         const elt = getByText("foo");
-        expect(elt.parentElement?.parentElement).toHaveClass("taipy-expandable");
+        expect(elt.parentElement?.parentElement?.parentElement).toHaveClass("taipy-expandable");
     });
     it("displays the default value", async () => {
         const { getByText } = render(

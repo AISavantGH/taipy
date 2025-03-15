@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -15,16 +15,16 @@ import warnings
 import pytest
 
 from taipy.gui.utils.date import _string_to_date
-from taipy.gui.utils.types import _TaipyBase, _TaipyBool, _TaipyDate, _TaipyNumber
+from taipy.gui.utils.types import _TaipyBool, _TaipyData, _TaipyDate, _TaipyNumber
 
 
-def test_taipy_base():
-    tb = _TaipyBase("value", "hash")
+def test_taipy_data():
+    tb = _TaipyData("value", "hash")
     assert tb.get() == "value"
     assert tb.get_name() == "hash"
     tb.set("a value")
     assert tb.get() == "a value"
-    assert tb.get_hash() == NotImplementedError
+    assert tb.get_hash() == "_TpD"
 
 
 def test_taipy_bool():

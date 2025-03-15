@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -34,6 +34,7 @@ const webAppPath = resolveApp(basePath);
 const reactManifestPath = resolveApp(basePath + "/" + reactBundle + "-manifest.json");
 const reactDllPath = resolveApp(basePath + "/" + reactBundle + ".dll.js")
 const taipyDllPath = resolveApp(basePath + "/" + taipyBundle + ".js")
+const taipyGuiBaseExportPath = resolveApp(basePath + "/taipy-gui-base-export");
 
 module.exports = (env, options) => {
     const envVariables = {
@@ -45,7 +46,7 @@ module.exports = (env, options) => {
     return [{
             mode: options.mode, //'development', //'production',
             name: reactBundleName,
-            entry: ["react", "react-dom",
+            entry: ["react", "react-dom", "date-fns",
             "@emotion/react","@emotion/styled",
             "@mui/icons-material","@mui/material","@mui/x-date-pickers", "@mui/x-tree-view"],
             output: {
@@ -174,7 +175,6 @@ module.exports = (env, options) => {
         target: "web",
         entry: {
             "default": "./base/src/index.ts",
-            "preview": "./base/src/index-preview.ts",
         },
         output: {
             filename: (arg) => {
@@ -217,5 +217,36 @@ module.exports = (env, options) => {
         //         root: "_",
         //     },
         // },
+    },
+    {
+        entry: "./base/src/exports.ts",
+        output: {
+            filename: "taipy-gui-base.js",
+            path: taipyGuiBaseExportPath,
+            library: {
+                name: taipyGuiBaseBundleName,
+                type: "umd",
+            },
+            publicPath: "",
+        },
+        module: {
+            rules: [
+                {
+                    test: /\.tsx?$/,
+                    use: "ts-loader",
+                    exclude: /node_modules/,
+                },
+            ],
+        },
+        resolve: {
+            extensions: [".tsx", ".ts", ".js", ".tsx"],
+        },
+        plugins: [
+            new CopyWebpackPlugin({
+                patterns: [
+                    { from: "./base/src/packaging", to: taipyGuiBaseExportPath },
+                ],
+            }),
+        ],
     }];
 };

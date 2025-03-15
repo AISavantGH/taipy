@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,16 +9,17 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from time import sleep
 from typing import Union, cast
 from unittest import mock
 from unittest.mock import MagicMock
 
+import freezegun
 import pytest
 
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
+from taipy import Scope
+from taipy.common.config import Config
 from taipy.core import JobId, TaskId
 from taipy.core._orchestrator._abstract_orchestrator import _AbstractOrchestrator
 from taipy.core._orchestrator._dispatcher._development_job_dispatcher import _DevelopmentJobDispatcher
@@ -27,11 +28,13 @@ from taipy.core._orchestrator._orchestrator_factory import _OrchestratorFactory
 from taipy.core.config.job_config import JobConfig
 from taipy.core.data.in_memory import InMemoryDataNode
 from taipy.core.job._job_manager import _JobManager
+from taipy.core.job._job_manager_factory import _JobManagerFactory
 from taipy.core.job.job import Job
 from taipy.core.job.status import Status
 from taipy.core.scenario.scenario import Scenario
 from taipy.core.submission._submission_manager_factory import _SubmissionManagerFactory
 from taipy.core.task._task_manager import _TaskManager
+from taipy.core.task._task_manager_factory import _TaskManagerFactory
 from taipy.core.task.task import Task
 
 
@@ -70,9 +73,12 @@ def job(task, job_id):
 @pytest.fixture
 def replace_in_memory_write_fct():
     default_write = InMemoryDataNode.write
+    default__write = InMemoryDataNode._write
     InMemoryDataNode.write = _error
+    InMemoryDataNode._write = _error
     yield
     InMemoryDataNode.write = default_write
+    InMemoryDataNode._write = default__write
 
 
 def _foo():
@@ -81,6 +87,22 @@ def _foo():
 
 def _error():
     raise RuntimeError("Something bad has happened")
+
+
+def test_job_equals(job):
+    _TaskManagerFactory._build_manager()._set(job.task)
+    job_manager = _JobManagerFactory()._build_manager()
+
+    job_id = job.id
+    job_manager._set(job)
+
+    # To test if instance is same type
+    task = Task("task", {}, print, [], [], job_id)
+
+    job_2 = job_manager._get(job_id)
+    assert job == job_2
+    assert job != job_id
+    assert job != task
 
 
 def test_create_job(scenario, task, job):
@@ -303,6 +325,66 @@ def test_auto_set_and_reload(current_datetime, job_id):
     assert job_1.status == Status.COMPLETED
     assert job_1.creation_date == new_datetime_2
     assert not job_1._is_in_context
+
+
+def test_status_records(job_id):
+    task_1 = Task(config_id="name_1", properties={}, function=_foo, id=TaskId("task_1"))
+    submission = _SubmissionManagerFactory._build_manager()._create(task_1.id, task_1._ID_PREFIX, task_1.config_id)
+    with freezegun.freeze_time("2024-09-25 13:30:30"):
+        job_1 = Job(job_id, task_1, submission.id, "scenario_entity_id")
+    submission.jobs = [job_1]
+
+    _TaskManager._set(task_1)
+    _JobManager._set(job_1)
+
+    assert job_1._status_change_records == {"SUBMITTED": datetime(2024, 9, 25, 13, 30, 30)}
+    assert job_1.submitted_at == datetime(2024, 9, 25, 13, 30, 30)
+    assert job_1.execution_duration is None
+
+    with freezegun.freeze_time("2024-09-25 13:35:30"):
+        job_1.blocked()
+    assert job_1._status_change_records == {
+        "SUBMITTED": datetime(2024, 9, 25, 13, 30, 30),
+        "BLOCKED": datetime(2024, 9, 25, 13, 35, 30),
+    }
+    assert job_1.execution_duration is None
+    with freezegun.freeze_time("2024-09-25 13:36:00"):
+        assert job_1.blocked_duration == 30  # = 13:36:00 - 13:35:30
+
+    with freezegun.freeze_time("2024-09-25 13:40:30"):
+        job_1.pending()
+    assert job_1._status_change_records == {
+        "SUBMITTED": datetime(2024, 9, 25, 13, 30, 30),
+        "BLOCKED": datetime(2024, 9, 25, 13, 35, 30),
+        "PENDING": datetime(2024, 9, 25, 13, 40, 30),
+    }
+    assert job_1.execution_duration is None
+    with freezegun.freeze_time("2024-09-25 13:41:00"):
+        assert job_1.pending_duration == 30  # = 13:41:00 - 13:40:30
+
+    with freezegun.freeze_time("2024-09-25 13:50:30"):
+        job_1.running()
+    assert job_1._status_change_records == {
+        "SUBMITTED": datetime(2024, 9, 25, 13, 30, 30),
+        "BLOCKED": datetime(2024, 9, 25, 13, 35, 30),
+        "PENDING": datetime(2024, 9, 25, 13, 40, 30),
+        "RUNNING": datetime(2024, 9, 25, 13, 50, 30),
+    }
+    assert job_1.run_at == datetime(2024, 9, 25, 13, 50, 30)
+    assert job_1.blocked_duration == 300  # = 13:40:30 - 13:35:30
+    assert job_1.pending_duration == 600  # = 13:50:30 - 13:40:30
+    assert job_1.execution_duration > 0
+
+    with freezegun.freeze_time("2024-09-25 13:56:35"):
+        job_1.completed()
+    assert job_1._status_change_records == {
+        "SUBMITTED": datetime(2024, 9, 25, 13, 30, 30),
+        "BLOCKED": datetime(2024, 9, 25, 13, 35, 30),
+        "PENDING": datetime(2024, 9, 25, 13, 40, 30),
+        "RUNNING": datetime(2024, 9, 25, 13, 50, 30),
+        "COMPLETED": datetime(2024, 9, 25, 13, 56, 35),
+    }
+    assert job_1.execution_duration == 365  # = 13:56:35 - 13:50:30
 
 
 def test_is_deletable():

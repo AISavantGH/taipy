@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -22,6 +22,7 @@ import { useClassNames, useDispatch, useDynamicProperty, useModule } from "../..
 import { TaipyActiveProps, TaipyChangeProps, getUpdateVar } from "./utils";
 import TaipyRendered from "../pages/TaipyRendered";
 import { createSendUpdateAction } from "../../context/taipyReducers";
+import { getComponentClassName } from "./TaipyStyle";
 
 interface ExpandableProps extends TaipyActiveProps, TaipyChangeProps {
     expanded?: boolean;
@@ -62,7 +63,7 @@ const Expandable = (props: ExpandableProps) => {
 
     return (
         <Tooltip title={hover || ""}>
-            <Accordion expanded={opened} onChange={onChange} className={className} id={id} disabled={!active}>
+            <Accordion expanded={opened} onChange={onChange} className={`${className} ${getComponentClassName(props.children)}`} id={id} disabled={!active}>
                 {title || defaultTitle ? (
                     <AccordionSummary expandIcon={<ExpandMoreIcon />}>{title || defaultTitle}</AccordionSummary>
                 ) : null}

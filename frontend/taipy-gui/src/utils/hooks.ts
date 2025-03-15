@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import { Dispatch, useContext, useEffect, useMemo, useRef } from "react";
+import { Dispatch, RefObject, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useMediaQuery, useTheme } from "@mui/material";
 
 import { getUpdateVars } from "../components/Taipy/utils";
@@ -29,16 +29,22 @@ import { TIMEZONE_CLIENT } from "../utils";
  * @param defaultStatic - The default static value.
  * @returns The latest updated value.
  */
-export const useDynamicProperty = <T>(value: T, defaultValue: T, defaultStatic: T): T => {
+export const useDynamicProperty = <T>(value: T, defaultValue: T, defaultStatic: T, checkType?: string, nullToDefault?: boolean): T => {
     return useMemo(() => {
-        if (value !== undefined) {
+        if (nullToDefault && value === null) {
+            return defaultStatic;
+        }
+        if (value !== undefined && (!checkType || typeof value === checkType)) {
             return value;
         }
-        if (defaultValue !== undefined) {
+        if (nullToDefault && defaultValue === null) {
+            return defaultStatic;
+        }
+        if (defaultValue !== undefined && (!checkType || typeof defaultValue === checkType)) {
             return defaultValue;
         }
         return defaultStatic;
-    }, [value, defaultValue, defaultStatic]);
+    }, [value, defaultValue, defaultStatic, checkType, nullToDefault]);
 };
 
 /**
@@ -92,7 +98,7 @@ export const useDispatchRequestUpdateOnFirstRender = (
     forceRefresh?: boolean
 ) => {
     useEffect(() => {
-        const updateArray = getUpdateVars(updateVars).filter(uv => !uv.includes(","));
+        const updateArray = getUpdateVars(updateVars).filter((uv) => !uv.includes(","));
         varName && updateArray.push(varName);
         updateArray.length && dispatch(createRequestUpdateAction(id, context, updateArray, forceRefresh));
     }, [updateVars, dispatch, id, context, varName, forceRefresh]);
@@ -157,7 +163,7 @@ export const useClassNames = (libClassName?: string, dynamicClassName?: string, 
 export const useWhyDidYouUpdate = (name: string, props: Record<string, unknown>): void => {
     // Get a mutable ref object where we can store props ...
     // ... for comparison next time this hook runs.
-    const previousProps = useRef({} as Record<string, unknown>);
+    const previousProps = useRef<Record<string, unknown>>();
     useEffect(() => {
         if (previousProps.current) {
             // Get all keys from previous and current props
@@ -167,7 +173,7 @@ export const useWhyDidYouUpdate = (name: string, props: Record<string, unknown>)
             // Iterate through keys
             allKeys.forEach((key) => {
                 // If previous is different from current
-                if (previousProps.current[key] !== props[key]) {
+                if (previousProps.current && previousProps.current[key] !== props[key]) {
                     // Add to changesObj
                     changesObj[key] = {
                         from: previousProps.current[key],
@@ -184,3 +190,24 @@ export const useWhyDidYouUpdate = (name: string, props: Record<string, unknown>)
         previousProps.current = props;
     });
 };
+
+export const useElementVisible = (ref: RefObject<HTMLElement | null>) => {
+    const observerRef = useRef<IntersectionObserver | null>(null);
+    const [isOnScreen, setIsOnScreen] = useState(false);
+
+    useEffect(() => {
+        observerRef.current = new IntersectionObserver(([entry]) => setIsOnScreen(entry.isIntersecting));
+    }, []);
+
+    useEffect(() => {
+        observerRef.current && ref.current && observerRef.current.observe(ref.current);
+
+        return () => {
+            observerRef.current && observerRef.current.disconnect();
+        };
+    }, [ref]);
+
+    return isOnScreen;
+};
+
+export const useUniqueId = (id?: string) => useMemo(() => (id ? id : new Date().toISOString() + Math.random()), [id]);

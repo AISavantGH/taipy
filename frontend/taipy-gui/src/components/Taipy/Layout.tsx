@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -16,6 +16,7 @@ import Box from "@mui/material/Box";
 
 import { useClassNames, useIsMobile } from "../../utils/hooks";
 import { TaipyBaseProps } from "./utils";
+import { getComponentClassName } from "./TaipyStyle";
 
 interface LayoutProps extends TaipyBaseProps {
     columns?: string;
@@ -51,7 +52,7 @@ const Layout = (props: LayoutProps) => {
     }, [columns, columns_Mobile_, gap, isMobile]);
 
     return (
-        <Box id={props.id} className={className} sx={sx}>
+        <Box id={props.id} className={`${className} ${getComponentClassName(props.children)}`} sx={sx}>
             {props.children}
         </Box>
     );

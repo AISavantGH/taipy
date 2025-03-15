@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,15 +11,27 @@
 
 import contextlib
 import typing as t
+from datetime import datetime
 from unittest.mock import Mock, patch
 
-from taipy.config.common.scope import Scope
-from taipy.core import Job, JobId, Scenario, Task
-from taipy.core.data.pickle import PickleDataNode
-from taipy.core.submission.submission import Submission, SubmissionStatus
-from taipy.gui import Gui
-from taipy.gui_core._context import _GuiCoreContext
+import pytest
 
+from taipy.core import Cycle, CycleId, Job, JobId, Scenario, Task
+from taipy.core.common.frequency import Frequency
+from taipy.core.common.scope import Scope
+from taipy.core.cycle._cycle_manager_factory import _CycleManagerFactory
+from taipy.core.data._data_manager_factory import _DataManagerFactory
+from taipy.core.data.pickle import PickleDataNode
+from taipy.core.job._job_manager_factory import _JobManagerFactory
+from taipy.core.scenario._scenario_manager_factory import _ScenarioManagerFactory
+from taipy.core.submission._submission_manager_factory import _SubmissionManagerFactory
+from taipy.core.submission.submission import Submission
+from taipy.core.task._task_manager_factory import _TaskManagerFactory
+from taipy.gui import Gui, State
+from taipy.gui_core._context import _GuiCoreContext
+from taipy.gui_core._utils import _ClientStatus
+
+a_cycle = Cycle(Frequency.DAILY, {}, datetime.now(), datetime.now(), datetime.now(), id=CycleId("CYCLE_id"))
 a_scenario = Scenario("scenario_config_id", None, {}, sequences={"sequence": {}})
 a_task = Task("task_config_id", {}, print)
 a_job = Job(t.cast(JobId, "JOB_job_id"), a_task, "submit_id", a_scenario.id)
@@ -50,24 +62,53 @@ def mock_core_get(entity_id):
         return a_datanode
     if entity_id == a_submission.id:
         return a_submission
+    if entity_id == a_cycle.id:
+        return a_cycle
     return a_task
 
 
-class MockState:
+class MockState(State):
     def __init__(self, **kwargs) -> None:
-        self.assign = kwargs.get("assign")
+        self.assign = t.cast(t.Callable, kwargs.get("assign")) # type: ignore[method-assign]
+        self.gui = t.cast(Gui, kwargs.get("gui"))
+    def get_gui(self):
+        return self.gui
+    def broadcast(self, name: str, value: t.Any):
+        pass
 
 
 class TestGuiCoreContext_is_readable:
+    @pytest.fixture(scope="class", autouse=True)
+    def set_entity(self):
+        _CycleManagerFactory._build_manager()._set(a_cycle)
+        _ScenarioManagerFactory._build_manager()._set(a_scenario)
+        _TaskManagerFactory._build_manager()._set(a_task)
+        _JobManagerFactory._build_manager()._set(a_job)
+        _DataManagerFactory._build_manager()._set(a_datanode)
+        _SubmissionManagerFactory._build_manager()._set(a_submission)
+
     def test_scenario_adapter(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get):
             gui_core_context = _GuiCoreContext(Mock())
+            gui_core_context.scenario_by_cycle = {}
             outcome = gui_core_context.scenario_adapter(a_scenario)
-            assert isinstance(outcome, tuple)
+            assert isinstance(outcome, list)
             assert outcome[0] == a_scenario.id
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
                 outcome = gui_core_context.scenario_adapter(a_scenario)
+                assert outcome is None
+
+    def test_cycle_adapter(self):
+        with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get):
+            gui_core_context = _GuiCoreContext(Mock())
+            gui_core_context.scenario_by_cycle = t.cast(dict, {"a": 1})
+            outcome = gui_core_context.cycle_adapter(a_cycle)
+            assert isinstance(outcome, list)
+            assert outcome[0] == a_cycle.id
+
+            with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
+                outcome = gui_core_context.cycle_adapter(a_cycle)
                 assert outcome is None
 
     def test_get_scenario_by_id(self):
@@ -85,16 +126,19 @@ class TestGuiCoreContext_is_readable:
             gui_core_context = _GuiCoreContext(Mock())
             assign = Mock()
             gui_core_context.crud_scenario(
-                MockState(assign=assign),
+                MockState(assign=assign, gui=gui_core_context.gui),
                 "",
-                {
+                t.cast(dict, {
                     "args": [
+                        "",
+                        "",
                         "",
                         True,
                         False,
                         {"name": "name", "id": a_scenario.id},
-                    ]
-                },
+                    ],
+                    "error_id": "error_var",
+                }),
             )
             assign.assert_not_called()
 
@@ -103,18 +147,21 @@ class TestGuiCoreContext_is_readable:
                 gui_core_context.crud_scenario(
                     MockState(assign=assign),
                     "",
-                    {
+                    t.cast(dict, {
                         "args": [
+                            "",
+                            "",
                             "",
                             True,
                             False,
                             {"name": "name", "id": a_scenario.id},
-                        ]
-                    },
+                        ],
+                        "error_id": "error_var",
+                    }),
                 )
                 assign.assert_called_once()
-                assert assign.call_args.args[0] == "gui_core_sc_error"
-                assert str(assign.call_args.args[1]).endswith("is not readable.")
+                assert assign.call_args.args[0] == "error_var"
+                assert "is not readable" in assign.call_args.args[1]
 
     def test_edit_entity(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get):
@@ -123,14 +170,15 @@ class TestGuiCoreContext_is_readable:
             gui_core_context.edit_entity(
                 MockState(assign=assign),
                 "",
-                {
+                t.cast(dict, {
                     "args": [
                         {"name": "name", "id": a_scenario.id},
-                    ]
-                },
+                    ],
+                    "error_id": "error_var",
+                }),
             )
             assign.assert_called_once()
-            assert assign.call_args.args[0] == "gui_core_sv_error"
+            assert assign.call_args.args[0] == "error_var"
             assert assign.call_args.args[1] == ""
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
@@ -138,27 +186,25 @@ class TestGuiCoreContext_is_readable:
                 gui_core_context.edit_entity(
                     MockState(assign=assign),
                     "",
-                    {
+                    t.cast(dict, {
                         "args": [
                             {"name": "name", "id": a_scenario.id},
-                        ]
-                    },
+                        ],
+                        "error_id": "error_var",
+                    }),
                 )
                 assign.assert_called_once()
-                assert assign.call_args.args[0] == "gui_core_sv_error"
-                assert str(assign.call_args.args[1]).endswith("is not readable.")
+                assert assign.call_args.args[0] == "error_var"
+                assert "is not readable" in assign.call_args.args[1]
 
     def test_submission_status_callback(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get) as mockget:
             mockget.reset_mock()
             mockGui = Mock(Gui)
-            mockGui._get_autorization = lambda s: contextlib.nullcontext()
+            mockGui._get_authorization = lambda s: contextlib.nullcontext()
             gui_core_context = _GuiCoreContext(mockGui)
 
-            def sub_cb():
-                return True
-
-            gui_core_context.client_submission[a_submission.id] = SubmissionStatus.UNDEFINED
+            gui_core_context.client_submission[a_submission.id] = _ClientStatus("client_id", None)
             gui_core_context.submission_status_callback(a_submission.id)
             mockget.assert_called()
             found = False
@@ -169,15 +215,11 @@ class TestGuiCoreContext_is_readable:
             assert found is True
             mockget.reset_mock()
 
-            with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
-                gui_core_context.submission_status_callback(a_submission.id)
-                mockget.assert_not_called()
-
     def test_data_node_adapter(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get):
             gui_core_context = _GuiCoreContext(Mock())
             outcome = gui_core_context.data_node_adapter(a_datanode)
-            assert isinstance(outcome, tuple)
+            assert isinstance(outcome, list)
             assert outcome[0] == a_datanode.id
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
@@ -196,66 +238,71 @@ class TestGuiCoreContext_is_readable:
                 assert outcome is None
 
     def test_act_on_jobs(self):
-        with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get), patch(
-            "taipy.gui_core._context.is_deletable", side_effect=mock_is_true
+        with (
+            patch("taipy.gui_core._context.core_get", side_effect=mock_core_get),
+            patch("taipy.gui_core._context.is_deletable", side_effect=mock_is_true),
         ):
             gui_core_context = _GuiCoreContext(Mock())
             assign = Mock()
             gui_core_context.act_on_jobs(
                 MockState(assign=assign),
                 "",
-                {
+                t.cast(dict, {
                     "args": [
                         {"id": [a_job.id], "action": "delete"},
-                    ]
-                },
+                    ],
+                    "error_id": "error_var",
+                }),
             )
             assign.assert_called_once()
-            assert assign.call_args.args[0] == "gui_core_js_error"
-            assert str(assign.call_args.args[1]).find("is not readable.") == -1
+            assert assign.call_args.args[0] == "error_var"
+            assert "is not readable" not in assign.call_args.args[1]
             assign.reset_mock()
 
             gui_core_context.act_on_jobs(
                 MockState(assign=assign),
                 "",
-                {
+                t.cast(dict, {
                     "args": [
                         {"id": [a_job.id], "action": "cancel"},
-                    ]
-                },
+                    ],
+                    "error_id": "error_var",
+                }),
             )
             assign.assert_called_once()
-            assert assign.call_args.args[0] == "gui_core_js_error"
-            assert str(assign.call_args.args[1]).find("is not readable.") == -1
+            assert assign.call_args.args[0] == "error_var"
+            assert "is not readable" not in assign.call_args.args[1]
             assign.reset_mock()
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
                 gui_core_context.act_on_jobs(
                     MockState(assign=assign),
                     "",
-                    {
+                    t.cast(dict, {
                         "args": [
                             {"id": [a_job.id], "action": "delete"},
-                        ]
-                    },
+                        ],
+                        "error_id": "error_var",
+                    }),
                 )
                 assign.assert_called_once()
-                assert assign.call_args.args[0] == "gui_core_js_error"
-                assert str(assign.call_args.args[1]).endswith("is not readable.")
+                assert assign.call_args.args[0] == "error_var"
+                assert "is not readable" in assign.call_args.args[1]
                 assign.reset_mock()
 
                 gui_core_context.act_on_jobs(
                     MockState(assign=assign),
                     "",
-                    {
+                    t.cast(dict, {
                         "args": [
                             {"id": [a_job.id], "action": "cancel"},
-                        ]
-                    },
+                        ],
+                        "error_id": "error_var",
+                    }),
                 )
                 assign.assert_called_once()
-                assert assign.call_args.args[0] == "gui_core_js_error"
-                assert str(assign.call_args.args[1]).endswith("is not readable.")
+                assert assign.call_args.args[0] == "error_var"
+                assert "is not readable" in assign.call_args.args[1]
 
     def test_edit_data_node(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get):
@@ -264,14 +311,15 @@ class TestGuiCoreContext_is_readable:
             gui_core_context.edit_data_node(
                 MockState(assign=assign),
                 "",
-                {
+                t.cast(dict, {
                     "args": [
                         {"id": a_datanode.id},
-                    ]
-                },
+                    ],
+                    "error_id": "error_var",
+                }),
             )
             assign.assert_called_once()
-            assert assign.call_args.args[0] == "gui_core_dv_error"
+            assert assign.call_args.args[0] == "error_var"
             assert assign.call_args.args[1] == ""
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
@@ -279,15 +327,16 @@ class TestGuiCoreContext_is_readable:
                 gui_core_context.edit_data_node(
                     MockState(assign=assign),
                     "",
-                    {
+                    t.cast(dict, {
                         "args": [
                             {"id": a_datanode.id},
-                        ]
-                    },
+                        ],
+                        "error_id": "error_var",
+                    }),
                 )
                 assign.assert_called_once()
-                assert assign.call_args.args[0] == "gui_core_dv_error"
-                assert str(assign.call_args.args[1]).endswith("is not readable.")
+                assert assign.call_args.args[0] == "error_var"
+                assert "is not readable" in assign.call_args.args[1]
 
     def test_lock_datanode_for_edit(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get):
@@ -298,14 +347,15 @@ class TestGuiCoreContext_is_readable:
             gui_core_context.lock_datanode_for_edit(
                 MockState(assign=assign),
                 "",
-                {
+                t.cast(dict, {
                     "args": [
                         {"id": a_datanode.id},
-                    ]
-                },
+                    ],
+                    "error_id": "error_var",
+                }),
             )
             assign.assert_called_once()
-            assert assign.call_args.args[0] == "gui_core_dv_error"
+            assert assign.call_args.args[0] == "error_var"
             assert assign.call_args.args[1] == ""
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
@@ -313,15 +363,16 @@ class TestGuiCoreContext_is_readable:
                 gui_core_context.lock_datanode_for_edit(
                     MockState(assign=assign),
                     "",
-                    {
+                    t.cast(dict, {
                         "args": [
                             {"id": a_datanode.id},
-                        ]
-                    },
+                        ],
+                        "error_id": "error_var",
+                    }),
                 )
                 assign.assert_called_once()
-                assert assign.call_args.args[0] == "gui_core_dv_error"
-                assert str(assign.call_args.args[1]).endswith("is not readable.")
+                assert assign.call_args.args[0] == "error_var"
+                assert "is not readable" in assign.call_args.args[1]
 
     def test_get_scenarios_for_owner(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get) as mockget:
@@ -331,7 +382,7 @@ class TestGuiCoreContext_is_readable:
             mockget.reset_mock()
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
-                gui_core_context.submission_status_callback(a_scenario.id)
+                gui_core_context.get_scenarios_for_owner(a_scenario.id)
                 mockget.assert_not_called()
 
     def test_update_data(self):
@@ -343,14 +394,10 @@ class TestGuiCoreContext_is_readable:
             gui_core_context.update_data(
                 MockState(assign=assign),
                 "",
-                {
-                    "args": [
-                        {"id": a_datanode.id},
-                    ]
-                },
+                t.cast(dict, {"args": [{"id": a_datanode.id, "error_id": "error_var"}]})
             )
             assign.assert_called()
-            assert assign.call_args_list[0].args[0] == "gui_core_dv_error"
+            assert assign.call_args_list[0].args[0] == "error_var"
             assert assign.call_args_list[0].args[1] == ""
             assign.reset_mock()
 
@@ -358,15 +405,11 @@ class TestGuiCoreContext_is_readable:
                 gui_core_context.update_data(
                     MockState(assign=assign),
                     "",
-                    {
-                        "args": [
-                            {"id": a_datanode.id},
-                        ]
-                    },
+                    t.cast(dict, {"args": [{"id": a_datanode.id, "error_id": "error_var"}]})
                 )
                 assign.assert_called_once()
-                assert assign.call_args.args[0] == "gui_core_dv_error"
-                assert str(assign.call_args.args[1]).endswith("is not readable.")
+                assert assign.call_args.args[0] == "error_var"
+                assert "is not readable" in assign.call_args.args[1]
 
     def test_tabular_data_edit(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get):
@@ -379,14 +422,12 @@ class TestGuiCoreContext_is_readable:
                 "",
                 {
                     "user_data": {"dn_id": a_datanode.id},
+                    "error_id": "error_var",
                 },
             )
             assign.assert_called_once()
-            assert assign.call_args_list[0].args[0] == "gui_core_dv_error"
-            assert (
-                assign.call_args_list[0].args[1]
-                == "Error updating Datanode tabular value: type does not support at[] indexer."
-            )
+            assert assign.call_args_list[0].args[0] == "error_var"
+            assert "tabular value: type does not support at[] indexer" in assign.call_args_list[0].args[1]
             assign.reset_mock()
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
@@ -395,41 +436,42 @@ class TestGuiCoreContext_is_readable:
                     "",
                     {
                         "user_data": {"dn_id": a_datanode.id},
+                        "error_id": "error_var",
                     },
                 )
                 assign.assert_called_once()
-                assert assign.call_args.args[0] == "gui_core_dv_error"
-                assert str(assign.call_args.args[1]).endswith("is not readable.")
+                assert assign.call_args.args[0] == "error_var"
+                assert "is not readable" in assign.call_args.args[1]
 
     def test_get_data_node_tabular_data(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get) as mockget:
             gui_core_context = _GuiCoreContext(Mock())
-            gui_core_context.get_data_node_tabular_data(a_datanode, a_datanode.id)
+            gui_core_context.get_data_node_tabular_data(a_datanode.id)
             mockget.assert_called_once()
             mockget.reset_mock()
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
-                gui_core_context.get_data_node_tabular_data(a_datanode, a_datanode.id)
+                gui_core_context.get_data_node_tabular_data(a_datanode.id)
                 mockget.assert_not_called()
 
     def test_get_data_node_tabular_columns(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get) as mockget:
             gui_core_context = _GuiCoreContext(Mock())
-            gui_core_context.get_data_node_tabular_columns(a_datanode, a_datanode.id)
+            gui_core_context.get_data_node_tabular_columns(a_datanode.id)
             mockget.assert_called_once()
             mockget.reset_mock()
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
-                gui_core_context.get_data_node_tabular_columns(a_datanode, a_datanode.id)
+                gui_core_context.get_data_node_tabular_columns(a_datanode.id)
                 mockget.assert_not_called()
 
     def test_get_data_node_chart_config(self):
         with patch("taipy.gui_core._context.core_get", side_effect=mock_core_get) as mockget:
             gui_core_context = _GuiCoreContext(Mock())
-            gui_core_context.get_data_node_chart_config(a_datanode, a_datanode.id)
+            gui_core_context.get_data_node_chart_config(a_datanode.id)
             mockget.assert_called_once()
             mockget.reset_mock()
 
             with patch("taipy.gui_core._context.is_readable", side_effect=mock_is_readable_false):
-                gui_core_context.get_data_node_chart_config(a_datanode, a_datanode.id)
+                gui_core_context.get_data_node_chart_config(a_datanode.id)
                 mockget.assert_not_called()

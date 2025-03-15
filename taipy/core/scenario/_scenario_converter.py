@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Set, Union
 
 from .._repository._abstract_converter import _AbstractConverter
-from .._version._utils import _migrate_entity
 from ..common import _utils
 from ..cycle._cycle_manager_factory import _CycleManagerFactory
 from ..cycle.cycle import Cycle, CycleId
@@ -67,7 +66,7 @@ class _ScenarioConverter(_AbstractConverter):
                         for it in subscribers
                     ]
 
-        scenario = Scenario(
+        return Scenario(
             scenario_id=model.id,
             config_id=model.config_id,
             tasks=tasks,
@@ -84,7 +83,6 @@ class _ScenarioConverter(_AbstractConverter):
             version=model.version,
             sequences=model.sequences,
         )
-        return _migrate_entity(scenario)
 
     @staticmethod
     def __to_cycle(cycle_id: Optional[CycleId] = None) -> Optional[Cycle]:

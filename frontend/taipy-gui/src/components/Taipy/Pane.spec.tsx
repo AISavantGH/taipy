@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -28,8 +28,8 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 mockedAxios.get.mockRejectedValue("Network error: Something went wrong");
 mockedAxios.get.mockResolvedValue({ data: { jsx_no: '<div key="mock" data-testid="mocked"></div>' } });
 
-jest.mock("react-router-dom", () => ({
-    ...jest.requireActual("react-router-dom"),
+jest.mock("react-router", () => ({
+    ...jest.requireActual("react-router"),
     useLocation: () => ({
         pathname: "pathname",
     }),
@@ -140,7 +140,7 @@ describe("Pane Component", () => {
     it("dispatch a well formed message on close", async () => {
         const dispatch = jest.fn();
         const state: TaipyState = INITIAL_STATE;
-        const { getByText } = render(
+        render(
             <TaipyContext.Provider value={{ state, dispatch }}>
                 <HelmetProvider>
                     <Pane id="testId" page="page" open={true} onClose="testCloseAction" />
@@ -152,7 +152,7 @@ describe("Pane Component", () => {
         elt && await userEvent.click(elt);
         expect(dispatch).toHaveBeenLastCalledWith({
             name: "testId",
-            payload: { action: "testCloseAction", args: [] },
+            payload: { action: "testCloseAction", args: [false] },
             type: "SEND_ACTION_ACTION",
         });
     });
@@ -177,4 +177,20 @@ describe("Pane Component", () => {
             type: "SEND_UPDATE_ACTION",
         });
     });
+    it("shows a button when closed with property", async () => {
+        const dispatch = jest.fn();
+        const state: TaipyState = INITIAL_STATE;
+        const { getByRole } = render(
+            <TaipyContext.Provider value={{ state, dispatch }}>
+                <HelmetProvider>
+                    <Pane page="page" open={false} showButton={true} persistent={true} onClose="testCloseAction" />
+                </HelmetProvider>
+            </TaipyContext.Provider>
+        );
+        const elt = document.querySelector(".MuiBackdrop-root");
+        expect(elt).toBeNull();
+        const but = getByRole("button");
+        expect(but).not.toBeDisabled();
+    });
+
 });

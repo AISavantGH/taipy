@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -13,16 +13,16 @@
 
 import React, { useState, useCallback, useEffect, ChangeEvent, MouseEvent, KeyboardEvent } from "react";
 import Divider from "@mui/material/Divider";
-import Grid from "@mui/material/Grid";
+import Grid from "@mui/material/Grid2";
 import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { DeleteOutline, CheckCircle, Cancel } from "@mui/icons-material";
 
-import { createSendActionNameAction, useDispatch, useModule } from "taipy-gui";
+import { createSendActionNameAction, getUpdateVar, useDispatch, useModule } from "taipy-gui";
 
-import { DeleteIconSx, FieldNoMaxWidth, IconPaddingSx, disableColor, hoverSx } from "./utils";
+import { CoreProps, DeleteIconSx, FieldNoMaxWidth, IconPaddingSx, disableColor, hoverSx } from "./utils";
 
 type Property = {
     id: string;
@@ -34,24 +34,37 @@ type PropertiesEditPayload = {
     id: string;
     properties?: Property[];
     deleted_properties?: Array<Partial<Property>>;
+    error_id?: string;
 };
 
-interface PropertiesEditorProps {
-    id?: string;
+export type DatanodeProperties = Array<[string, string]>;
+
+interface PropertiesEditorProps extends CoreProps {
     entityId: string;
-    active: boolean;
     show: boolean;
-    entProperties: Array<[string, string]>;
+    entProperties: DatanodeProperties;
     onFocus: (e: MouseEvent<HTMLElement>) => void;
     focusName: string;
     setFocusName: (name: string) => void;
     isDefined: boolean;
     onEdit?: string;
-    editable: boolean;
+    notEditableReason: string;
 }
 
 const PropertiesEditor = (props: PropertiesEditorProps) => {
-    const { id, entityId, isDefined, show, active, onFocus, focusName, setFocusName, entProperties, editable } = props;
+    const {
+        id,
+        entityId,
+        isDefined,
+        show,
+        active,
+        onFocus,
+        focusName,
+        setFocusName,
+        entProperties,
+        notEditableReason,
+        updateVars = "",
+    } = props;
 
     const dispatch = useDispatch();
     const module = useModule();
@@ -83,7 +96,11 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                 const property = propId ? properties.find((p) => p.id === propId) : newProp;
                 if (property) {
                     const oldId = property.id;
-                    const payload: PropertiesEditPayload = { id: entityId, properties: [property] };
+                    const payload: PropertiesEditPayload = {
+                        id: entityId,
+                        properties: [property],
+                        error_id: getUpdateVar(updateVars, "error_id"),
+                    };
                     if (oldId && oldId != property.key) {
                         payload.deleted_properties = [{ key: oldId }];
                     }
@@ -93,7 +110,7 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                 setFocusName("");
             }
         },
-        [isDefined, props.onEdit, entityId, properties, newProp, id, dispatch, module, setFocusName]
+        [isDefined, props.onEdit, entityId, properties, newProp, id, dispatch, module, setFocusName, updateVars]
     );
     const cancelProperty = useCallback(
         (e?: MouseEvent<HTMLElement>, dataset?: DOMStringMap) => {
@@ -124,8 +141,8 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                     e.stopPropagation();
                 }
             }
-
-        }, [editProperty, cancelProperty]
+        },
+        [editProperty, cancelProperty]
     );
 
     const deleteProperty = useCallback(
@@ -159,14 +176,13 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
 
     return show ? (
         <>
-            <Grid item xs={12} container rowSpacing={2}>
+            <Grid size={12} container rowSpacing={2}>
                 {properties
                     ? properties.map((property) => {
                           const propName = `property-${property.id}`;
                           return (
                               <Grid
-                                  item
-                                  xs={12}
+                                  size={12}
                                   spacing={1}
                                   container
                                   justifyContent="space-between"
@@ -175,9 +191,9 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                                   onClick={onFocus}
                                   sx={hoverSx}
                               >
-                                  {active && editable && focusName === propName ? (
+                                  {active && !notEditableReason && focusName === propName ? (
                                       <>
-                                          <Grid item xs={4}>
+                                          <Grid size={4}>
                                               <TextField
                                                   label="Key"
                                                   variant="outlined"
@@ -187,10 +203,10 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                                                   data-name="key"
                                                   data-id={property.id}
                                                   onChange={updatePropertyField}
-                                                  inputProps={{onKeyDown}}
+                                                  slotProps={{ input: { onKeyDown } }}
                                               />
                                           </Grid>
-                                          <Grid item xs={5}>
+                                          <Grid size={5}>
                                               <TextField
                                                   label="Value"
                                                   variant="outlined"
@@ -200,12 +216,11 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                                                   data-name="value"
                                                   data-id={property.id}
                                                   onChange={updatePropertyField}
-                                                  inputProps={{onKeyDown, "data-enter": true}}
+                                                  slotProps={{ htmlInput: { onKeyDown, "data-enter": true } }}
                                               />
                                           </Grid>
                                           <Grid
-                                              item
-                                              xs={2}
+                                              size={2}
                                               container
                                               alignContent="center"
                                               alignItems="center"
@@ -233,8 +248,7 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                                               </Tooltip>
                                           </Grid>
                                           <Grid
-                                              item
-                                              xs={1}
+                                              size={1}
                                               container
                                               alignContent="center"
                                               alignItems="center"
@@ -259,13 +273,13 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                                       </>
                                   ) : (
                                       <>
-                                          <Grid item xs={4}>
+                                          <Grid size={4}>
                                               <Typography variant="subtitle2">{property.key}</Typography>
                                           </Grid>
-                                          <Grid item xs={5}>
+                                          <Grid size={5}>
                                               <Typography variant="subtitle2">{property.value}</Typography>
-                                          </Grid>{" "}
-                                          <Grid item xs={3} />
+                                          </Grid>
+                                          <Grid size={3} />
                                       </>
                                   )}
                               </Grid>
@@ -273,8 +287,7 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                       })
                     : null}
                 <Grid
-                    item
-                    xs={12}
+                    size={12}
                     spacing={1}
                     container
                     justifyContent="space-between"
@@ -284,7 +297,7 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                 >
                     {active && focusName == "new-property" ? (
                         <>
-                            <Grid item xs={4}>
+                            <Grid size={4}>
                                 <TextField
                                     value={newProp.key}
                                     data-name="key"
@@ -293,10 +306,10 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                                     variant="outlined"
                                     sx={FieldNoMaxWidth}
                                     disabled={!isDefined}
-                                    inputProps={{onKeyDown}}
+                                    slotProps={{ htmlInput: { onKeyDown } }}
                                 />
                             </Grid>
-                            <Grid item xs={5}>
+                            <Grid size={5}>
                                 <TextField
                                     value={newProp.value}
                                     data-name="value"
@@ -305,17 +318,10 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                                     variant="outlined"
                                     sx={FieldNoMaxWidth}
                                     disabled={!isDefined}
-                                    inputProps={{onKeyDown, "data-enter": true}}
+                                    slotProps={{ htmlInput: { onKeyDown, "data-enter": true }}}
                                 />
                             </Grid>
-                            <Grid
-                                item
-                                xs={2}
-                                container
-                                alignContent="center"
-                                alignItems="center"
-                                justifyContent="center"
-                            >
+                            <Grid size={2} container alignContent="center" alignItems="center" justifyContent="center">
                                 <Tooltip title="Apply">
                                     <IconButton sx={IconPaddingSx} onClick={editProperty} size="small">
                                         <CheckCircle color="primary" />
@@ -327,22 +333,22 @@ const PropertiesEditor = (props: PropertiesEditorProps) => {
                                     </IconButton>
                                 </Tooltip>
                             </Grid>
-                            <Grid item xs={1} />
+                            <Grid size={1} />
                         </>
                     ) : (
                         <>
-                            <Grid item xs={4}>
+                            <Grid size={4}>
                                 <Typography variant="subtitle2">New Property Key</Typography>
                             </Grid>
-                            <Grid item xs={5}>
+                            <Grid size={5}>
                                 <Typography variant="subtitle2">Value</Typography>
                             </Grid>
-                            <Grid item xs={3} />
+                            <Grid size={3} />
                         </>
                     )}
                 </Grid>
             </Grid>
-            <Grid item xs={12}>
+            <Grid size={12}>
                 <Divider />
             </Grid>
         </>

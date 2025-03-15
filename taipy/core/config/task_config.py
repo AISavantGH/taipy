@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -10,38 +10,33 @@
 # specific language governing permissions and limitations under the License.
 
 from copy import copy
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Union, cast
 
-from taipy.config._config import _Config
-from taipy.config.common._template_handler import _TemplateHandler as _tpl
-from taipy.config.config import Config
-from taipy.config.section import Section
+from taipy.common.config import Config
+from taipy.common.config._config import _Config
+from taipy.common.config.common._template_handler import _TemplateHandler as _tpl
+from taipy.common.config.section import Section
 
-from ..common._warnings import _warn_deprecated
 from .data_node_config import DataNodeConfig
 
 
 class TaskConfig(Section):
-    """
-    Configuration fields needed to instantiate an actual `Task^`.
+    """Configuration fields needed to instantiate an actual `Task^`."""
 
-    Attributes:
-        id (str): Identifier of the task config. Must be a valid Python variable name.
-        inputs (Union[DataNodeConfig^, List[DataNodeConfig^]]): The optional list of
-            `DataNodeConfig^` inputs.<br/>
-            The default value is [].
-        outputs (Union[DataNodeConfig^, List[DataNodeConfig^]]): The optional list of
-            `DataNodeConfig^` outputs.<br/>
-            The default value is [].
-        skippable (bool): If True, indicates that the task can be skipped if no change has
-            been made on inputs.<br/>
-            The default value is False.
-        function (Callable): User function taking as inputs some parameters compatible with the
-            exposed types (*exposed_type* field) of the input data nodes and returning results
-            compatible with the exposed types (*exposed_type* field) of the outputs list.<br/>
-            The default value is None.
-        **properties (dict[str, any]): A dictionary of additional properties.
-    """
+    # Attributes:
+    #     inputs (Union[DataNodeConfig^, List[DataNodeConfig^]]): The optional list of
+    #         `DataNodeConfig^` inputs.<br/>
+    #         The default value is [].
+    #     outputs (Union[DataNodeConfig^, List[DataNodeConfig^]]): The optional list of
+    #         `DataNodeConfig^` outputs.<br/>
+    #         The default value is [].
+    #     skippable (bool): If True, indicates that the task can be skipped if no change has
+    #         been made on inputs.<br/>
+    #         The default value is False.
+    #     function (Callable): User function taking as inputs some parameters compatible with the
+    #         exposed types (*exposed_type* field) of the input data nodes and returning results
+    #         compatible with the exposed types (*exposed_type* field) of the outputs list.<br/>
+    #         The default value is None.
 
     name = "TASK"
 
@@ -50,29 +45,33 @@ class TaskConfig(Section):
     _OUTPUT_KEY = "outputs"
     _IS_SKIPPABLE_KEY = "skippable"
 
+    function: Optional[Callable]
+    """User function taking as inputs some parameters compatible with the data type
+    (*exposed_type* field) of the input data nodes and returning results compatible with the
+    data type (*exposed_type* field) of the outputs list."""
+
+    # NOTE: # {task_type: ["required_key1"]}
+    _REQUIRED_PROPERTIES: Dict[str, List[str]] = {}
+
     def __init__(
         self,
         id: str,
-        function,
-        inputs: Optional[Union[DataNodeConfig, List[DataNodeConfig]]] = None,
-        outputs: Optional[Union[DataNodeConfig, List[DataNodeConfig]]] = None,
-        skippable: Optional[bool] = False,
+        function: Optional[Callable],
+        inputs: Union[DataNodeConfig, List[DataNodeConfig], None] = None,
+        outputs: Union[DataNodeConfig, List[DataNodeConfig], None] = None,
+        skippable: bool = False,
         **properties,
-    ):
+    ) -> None:
         if inputs:
             self._inputs = [inputs] if isinstance(inputs, DataNodeConfig) else copy(inputs)
         else:
             self._inputs = []
         if outputs:
             self._outputs = [outputs] if isinstance(outputs, DataNodeConfig) else copy(outputs)
-            outputs_all_cacheable = all(output.cacheable for output in self._outputs)
-            if not skippable and outputs_all_cacheable:
-                _warn_deprecated("cacheable", suggest="the skippable feature")
-                skippable = True
         else:
             self._outputs = []
-        self._skippable = skippable
-        self.function = function
+        self._skippable: bool = skippable
+        self.function: Optional[Callable] = function
         super().__init__(id, **properties)
 
     def __copy__(self):
@@ -85,29 +84,39 @@ class TaskConfig(Section):
 
     @property
     def input_configs(self) -> List[DataNodeConfig]:
+        """The list of the input data node configurations."""
         return list(self._inputs)
 
     @property
     def inputs(self) -> List[DataNodeConfig]:
+        """The list of the input data node configurations."""
         return list(self._inputs)
 
     @property
     def output_configs(self) -> List[DataNodeConfig]:
+        """The list of the output data node configurations."""
         return list(self._outputs)
 
     @property
     def outputs(self) -> List[DataNodeConfig]:
+        """The list of the output data node configurations."""
         return list(self._outputs)
 
     @property
-    def skippable(self):
+    def skippable(self) -> bool:
+        """Indicates if the task can be skipped if no change has been made on inputs."""
         return _tpl._replace_templates(self._skippable)
 
     @classmethod
-    def default_config(cls):
+    def default_config(cls) -> "TaskConfig":
+        """Get the default task configuration.
+
+        Returns:
+            The default task configuration.
+        """
         return TaskConfig(cls._DEFAULT_KEY, None, [], [], False)
 
-    def _clean(self):
+    def _clean(self) -> None:
         self.function = None
         self._inputs = []
         self._outputs = []
@@ -158,21 +167,21 @@ class TaskConfig(Section):
     @staticmethod
     def _configure(
         id: str,
-        function,
-        input: Optional[Union[DataNodeConfig, List[DataNodeConfig]]] = None,
-        output: Optional[Union[DataNodeConfig, List[DataNodeConfig]]] = None,
-        skippable: Optional[bool] = False,
+        function: Optional[Callable],
+        input: Union[DataNodeConfig, List[DataNodeConfig], None] = None,
+        output: Union[DataNodeConfig, List[DataNodeConfig], None] = None,
+        skippable: bool = False,
         **properties,
     ) -> "TaskConfig":
         """Configure a new task configuration.
 
-        Parameters:
+        Arguments:
             id (str): The unique identifier of this task configuration.
             function (Callable): The python function called by Taipy to run the task.
-            input (Optional[Union[DataNodeConfig^, List[DataNodeConfig^]]]): The list of the
+            input (Union[DataNodeConfig^, List[DataNodeConfig^], None]): The list of the
                 function input data node configurations. This can be a unique data node
                 configuration if there is a single input data node, or None if there are none.
-            output (Optional[Union[DataNodeConfig^, List[DataNodeConfig^]]]): The list of the
+            output (Union[DataNodeConfig^, List[DataNodeConfig^], None]): The list of the
                 function output data node configurations. This can be a unique data node
                 configuration if there is a single output data node, or None if there are none.
             skippable (bool): If True, indicates that the task can be skipped if no change has
@@ -189,10 +198,10 @@ class TaskConfig(Section):
 
     @staticmethod
     def _set_default_configuration(
-        function,
-        input: Optional[Union[DataNodeConfig, List[DataNodeConfig]]] = None,
-        output: Optional[Union[DataNodeConfig, List[DataNodeConfig]]] = None,
-        skippable: Optional[bool] = False,
+        function: Optional[Callable],
+        input: Union[DataNodeConfig, List[DataNodeConfig], None] = None,
+        output: Union[DataNodeConfig, List[DataNodeConfig], None] = None,
+        skippable: bool = False,
         **properties,
     ) -> "TaskConfig":
         """Set the default values for task configurations.
@@ -201,12 +210,12 @@ class TaskConfig(Section):
         where all task configuration objects will find their default
         values when needed.
 
-        Parameters:
+        Arguments:
             function (Callable): The python function called by Taipy to run the task.
-            input (Optional[Union[DataNodeConfig^, List[DataNodeConfig^]]]): The list of the
+            input (Union[DataNodeConfig^, List[DataNodeConfig^], None]): The list of the
                 input data node configurations. This can be a unique data node
                 configuration if there is a single input data node, or None if there are none.
-            output (Optional[Union[DataNodeConfig^, List[DataNodeConfig^]]]): The list of the
+            output (Union[DataNodeConfig^, List[DataNodeConfig^], None]): The list of the
                 output data node configurations. This can be a unique data node
                 configuration if there is a single output data node, or None if there are none.
             skippable (bool): If True, indicates that the task can be skipped if no change has
@@ -214,6 +223,7 @@ class TaskConfig(Section):
                 The default value is False.
             **properties (dict[str, any]): A keyworded variable length list of additional
                 arguments.
+
         Returns:
             The default task configuration.
         """

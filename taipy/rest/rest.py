@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -8,7 +8,9 @@
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
-from taipy.config import Config
+from flask import Flask
+
+from taipy.common.config import Config
 
 from .app import create_app as _create_app
 
@@ -18,7 +20,7 @@ class Rest:
     Runnable Rest application serving REST APIs on top of Taipy Core functionalities.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize a REST API server.
 
@@ -31,7 +33,7 @@ class Rest:
         However, editing these parameters is only recommended for advanced users. Indeed, the default behavior of the
         REST server without any required configuration satisfies all the standard and basic needs.
         """
-        self._app = _create_app(
+        self._app: Flask = _create_app(
             Config.global_config.testing or False, Config.global_config.env, Config.global_config.secret_key
         )
 
@@ -39,7 +41,15 @@ class Rest:
         """
         Start a REST API server. This method is blocking.
 
-        Parameters:
+        Arguments:
             **kwargs : Options to provide to the application server.
         """
+        rest_config = Config.rest
+        kwargs.update(
+            {
+                "port": rest_config.port,
+                "host": rest_config.host,
+                "ssl_context": rest_config.ssl_context,
+            }
+        )
         self._app.run(**kwargs)

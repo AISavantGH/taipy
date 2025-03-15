@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -18,15 +18,16 @@ from pathlib import Path
 
 import numpy
 import pandas
-from flask.json.provider import DefaultJSONProvider
+from flask.json.provider import DefaultJSONProvider  # type: ignore[reportMissingImports]
 
 from .._warnings import _warn
 from ..icon import Icon
-from ..utils import _date_to_string, _MapDict, _TaipyBase
+from ..utils import _date_to_string, _DoNotUpdate, _MapDict, _TaipyBase
 from ..utils.singleton import _Singleton
 
 
 class JsonAdapter(ABC):
+    """NOT DOCUMENTED"""
     def register(self):
         _TaipyJsonAdapter().register(self)
 
@@ -51,10 +52,12 @@ class _DefaultJsonAdapter(JsonAdapter):
             return str(o)
         if isinstance(o, numpy.generic):
             return getattr(o, "tolist", lambda: o)()
+        if isinstance(o, _DoNotUpdate):
+            return None
 
 
 class _TaipyJsonAdapter(object, metaclass=_Singleton):
-    def __init__(self):
+    def __init__(self) -> None:
         self._adapters: t.List[JsonAdapter] = []
         self.register(_DefaultJsonAdapter())
 
@@ -66,7 +69,7 @@ class _TaipyJsonAdapter(object, metaclass=_Singleton):
             for adapter in reversed(self._adapters):
                 if (output := adapter.parse(o)) is not None:
                     return output
-            raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+            raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable (value: {o}).")
         except Exception as e:
             _warn("Exception while resolving JSON", e)
             return None
@@ -78,5 +81,5 @@ class _TaipyJsonEncoder(JSONEncoder):
 
 
 class _TaipyJsonProvider(DefaultJSONProvider):
-    default = staticmethod(_TaipyJsonAdapter().parse)  # type: ignore
+    default = staticmethod(_TaipyJsonAdapter().parse)
     sort_keys = False

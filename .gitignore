@@ -86,13 +86,13 @@ dist/
 .taipy/
 user_data/
 .my_data/
+/Data
 
 # demo files
-demo-*
-demo_*/
+demo[_\-]*
+demo[_|-]*/
 .airflow
 *.dags
 data_sources
 pipelines
-tasks
 pickles

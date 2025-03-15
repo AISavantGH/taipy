@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,13 +11,14 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import React, { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import React, { ChangeEvent, SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Autocomplete from "@mui/material/Autocomplete";
 import CheckIcon from "@mui/icons-material/Check";
 import DeleteIcon from "@mui/icons-material/Delete";
 import FilterListIcon from "@mui/icons-material/FilterList";
 import Badge from "@mui/material/Badge";
 import FormControl from "@mui/material/FormControl";
-import Grid from "@mui/material/Grid";
+import Grid from "@mui/material/Grid2";
 import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
 import MenuItem from "@mui/material/MenuItem";
@@ -27,21 +28,22 @@ import Select, { SelectChangeEvent } from "@mui/material/Select";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import { DateField, LocalizationProvider } from "@mui/x-date-pickers";
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFnsV3";
 
-import { ColumnDesc, defaultDateFormat, iconInRowSx } from "./tableUtils";
+import { ColumnDesc, defaultDateFormat, getSortByIndex, iconInRowSx, FilterDesc } from "./tableUtils";
 import { getDateTime, getTypeFromDf } from "../../utils";
 import { getSuffixedClassNames } from "./utils";
+import { MatchCase } from "../icons/MatchCase";
 
-export interface FilterDesc {
-    col: string;
-    action: string;
-    value: string | number | boolean | Date;
+export interface FilterColumnDesc extends ColumnDesc {
+    params?: number[];
 }
 
 interface TableFilterProps {
-    columns: Record<string, ColumnDesc>;
-    colsOrder: Array<string>;
+    fieldHeader?: string;
+    fieldHeaderTooltip?: string;
+    columns: Record<string, FilterColumnDesc>;
+    colsOrder?: Array<string>;
     onValidate: (data: Array<FilterDesc>) => void;
     appliedFilters?: Array<FilterDesc>;
     className?: string;
@@ -50,8 +52,10 @@ interface TableFilterProps {
 
 interface FilterRowProps {
     idx: number;
+    fieldHeader?: string;
+    fieldHeaderTooltip?: string;
     filter?: FilterDesc;
-    columns: Record<string, ColumnDesc>;
+    columns: Record<string, FilterColumnDesc>;
     colsOrder: Array<string>;
     setFilter: (idx: number, fd: FilterDesc, remove?: boolean) => void;
 }
@@ -62,65 +66,91 @@ const anchorOrigin = {
 } as PopoverOrigin;
 
 const actionsByType = {
-    string: { "==": "equals", contains: "contains", "!=": "not equals" },
+    string: { "==": "is", contains: "contains", "!=": "is not" },
     number: {
-        "<": "less",
-        "<=": "less equals",
+        "<": "is less than",
+        "<=": "is less than or equal to",
         "==": "equals",
-        "!=": "not equals",
-        ">=": "greater equals",
-        ">": "greater",
+        "!=": "does not equal",
+        ">=": "is greater than or equal to",
+        ">": "is greater than",
     },
-    boolean: { "==": "equals", "!=": "not equals" },
+    boolean: { "==": "is", "!=": "is not" },
     date: {
-        "<": "before",
-        "<=": "before equal",
-        "==": "equals",
-        "!=": "not equals",
-        ">=": "after equal",
-        ">": "after",
+        "<": "is before",
+        "<=": "is on or before",
+        "==": "is on",
+        "!=": "is not on",
+        ">=": "is on or after",
+        ">": "is after",
     },
 } as Record<string, Record<string, string>>;
 
-const gridSx = { p: "0.5em" };
+const gridSx = { p: "0.5em", minWidth: "36rem" };
+const autocompleteSx = { "& .MuiInputBase-root": { padding: "0" } };
+const badgeSx = {
+    "& .MuiBadge-badge": {
+        height: "10px",
+        minWidth: "10px",
+        width: "10px",
+        borderRadius: "5px",
+    },
+};
 
 const getActionsByType = (colType?: string) =>
-    (colType && colType in actionsByType && actionsByType[colType]) || actionsByType["string"];
+    (colType && colType in actionsByType && actionsByType[colType]) ||
+    (colType === "any" ? { ...actionsByType.string, ...actionsByType.number } : actionsByType.string);
 
-const getFilterDesc = (columns: Record<string, ColumnDesc>, colId?: string, act?: string, val?: string) => {
+const getFilterDesc = (
+    columns: Record<string, FilterColumnDesc>,
+    colId?: string,
+    act?: string,
+    val?: string,
+    matchCase?: boolean
+) => {
     if (colId && act && val !== undefined) {
         const colType = getTypeFromDf(columns[colId].type);
-        if (!val && (colType == "date" || colType == "number" || colType == "boolean")) {
+        if (val === "" && (colType === "date" || colType === "number" || colType === "boolean")) {
             return;
         }
         try {
-            const typedVal =
-                colType == "number"
-                    ? parseFloat(val)
-                    : colType == "boolean"
-                    ? val == "1"
-                    : colType == "date"
-                    ? getDateTime(val)
-                    : val;
             return {
                 col: columns[colId].dfid,
                 action: act,
-                value: typedVal,
+                value:
+                    typeof val === "string"
+                        ? colType === "number"
+                            ? parseFloat(val)
+                            : colType === "boolean"
+                            ? val === "1"
+                            : colType === "date"
+                            ? getDateTime(val)
+                            : val
+                        : val,
+                type: colType,
+                matchCase: !!matchCase,
+                params: columns[colId].params,
             } as FilterDesc;
         } catch (e) {
-            console.info("could not parse value ", val, e);
+            console.info("Could not parse value ", val, e);
         }
     }
 };
 
 const FilterRow = (props: FilterRowProps) => {
-    const { idx, setFilter, columns, colsOrder, filter } = props;
+    const { idx, fieldHeader, fieldHeaderTooltip, filter, columns, colsOrder, setFilter } = props;
 
     const [colId, setColId] = useState<string>("");
     const [action, setAction] = useState<string>("");
     const [val, setVal] = useState<string>("");
+    const [matchCase, setMatchCase] = useState<boolean>(false);
     const [enableCheck, setEnableCheck] = useState(false);
     const [enableDel, setEnableDel] = useState(false);
+
+    // Function to handle case-sensitivity toggle
+    const toggleMatchCase = useCallback(() => {
+        setMatchCase((prev) => !prev);
+    }, []);
 
     const onColSelect = useCallback(
         (e: SelectChangeEvent<string>) => {
@@ -129,6 +159,7 @@ const FilterRow = (props: FilterRowProps) => {
         },
         [columns, action, val]
     );
+
     const onActSelect = useCallback(
         (e: SelectChangeEvent<string>) => {
             setAction(e.target.value);
@@ -136,6 +167,7 @@ const FilterRow = (props: FilterRowProps) => {
         },
         [columns, colId, val]
     );
+
     const onValueChange = useCallback(
         (e: ChangeEvent<HTMLInputElement>) => {
             setVal(e.target.value);
@@ -143,6 +175,16 @@ const FilterRow = (props: FilterRowProps) => {
         },
         [columns, colId, action]
     );
+
+    const onValueAutoComp = useCallback(
+        (e: SyntheticEvent, value: string | null) => {
+            const inputValue = value || "";
+            setVal(inputValue);
+            setEnableCheck(!!getFilterDesc(columns, colId, action, inputValue));
+        },
+        [columns, colId, action]
+    );
+
     const onValueSelect = useCallback(
         (e: SelectChangeEvent<string>) => {
             setVal(e.target.value);
@@ -150,15 +192,10 @@ const FilterRow = (props: FilterRowProps) => {
         },
         [columns, colId, action]
     );
+
     const onDateChange = useCallback(
         (v: Date | null) => {
-            let dv;
-            try {
-                dv = v?.toISOString() || "";
-            } catch (e) {
-                dv = "";
-                console.info("TableFilter.onDateChange", v);
-            }
+            const dv = !(v instanceof Date) || isNaN(v.valueOf()) ? "" : v.toISOString();
             setVal(dv);
             setEnableCheck(!!getFilterDesc(columns, colId, action, dv));
         },
@@ -166,10 +203,11 @@ const FilterRow = (props: FilterRowProps) => {
     );
 
     const onDeleteClick = useCallback(() => setFilter(idx, undefined as unknown as FilterDesc, true), [idx, setFilter]);
+
     const onCheckClick = useCallback(() => {
-        const fd = getFilterDesc(columns, colId, action, val);
+        const fd = getFilterDesc(columns, colId, action, val, matchCase);
         fd && setFilter(idx, fd);
-    }, [idx, setFilter, columns, colId, action, val]);
+    }, [idx, setFilter, columns, colId, action, val, matchCase]);
 
     useEffect(() => {
         if (filter && idx > -1) {
@@ -190,27 +228,34 @@ const FilterRow = (props: FilterRowProps) => {
 
     const colType = getTypeFromDf(colId in columns ? columns[colId].type : "");
     const colFormat = colId in columns && columns[colId].format ? columns[colId].format : defaultDateFormat;
+    const colLov = colId in columns && columns[colId].lov ? columns[colId].lov : undefined;
 
     return (
-        <Grid container item xs={12} alignItems="center">
-            <Grid item xs={3.5}>
+        <Grid container size={12} alignItems="center">
+            <Grid size={3.5}>
                 <FormControl margin="dense">
-                    <InputLabel>Column</InputLabel>
-                    <Select value={colId || ""} onChange={onColSelect} input={<OutlinedInput label="Column" />}>
-                        {colsOrder.map((col) =>
-                            columns[col].filter ? (
-                                <MenuItem key={col} value={col}>
-                                    {columns[col].title || columns[col].dfid}
-                                </MenuItem>
-                            ) : null
-                        )}
-                    </Select>
+                    <InputLabel>{fieldHeader}</InputLabel>
+                    <Tooltip title={fieldHeaderTooltip} placement="top">
+                        <Select
+                            value={colId || ""}
+                            onChange={onColSelect}
+                            input={<OutlinedInput label={fieldHeader} />}
+                        >
+                            {colsOrder.map((col) =>
+                                columns[col].filter ? (
+                                    <MenuItem key={col} value={col}>
+                                        {columns[col].title || columns[col].dfid}
+                                    </MenuItem>
+                                ) : null
+                            )}
+                        </Select>
+                    </Tooltip>
                 </FormControl>
             </Grid>
-            <Grid item xs={3}>
+            <Grid size={3}>
                 <FormControl margin="dense">
-                    <InputLabel>Action</InputLabel>
-                    <Select value={action || ""} onChange={onActSelect} input={<OutlinedInput label="Action" />}>
+                    <InputLabel>Condition</InputLabel>
+                    <Select value={action || ""} onChange={onActSelect} input={<OutlinedInput label="Condition" />}>
                         {Object.keys(getActionsByType(colType)).map((a) => (
                             <MenuItem key={a} value={a}>
                                 {getActionsByType(colType)[a]}
@@ -219,11 +264,11 @@ const FilterRow = (props: FilterRowProps) => {
                     </Select>
                 </FormControl>
             </Grid>
-            <Grid item xs={3.5}>
+            <Grid size={3.5}>
                 {colType == "number" ? (
                     <TextField
                         type="number"
-                        value={typeof val == "number" ? val : val || ""}
+                        value={typeof val === "number" ? val : val || ""}
                         onChange={onValueChange}
                         label="Number"
                         margin="dense"
@@ -247,16 +292,46 @@ const FilterRow = (props: FilterRowProps) => {
                         format={colFormat}
                         margin="dense"
                     />
+                ) : colLov ? (
+                    <Autocomplete
+                        freeSolo
+                        autoSelect
+                        disableClearable
+                        options={colLov}
+                        value={val || ""}
+                        onChange={onValueAutoComp}
+                        renderInput={(params) => (
+                            <TextField
+                                {...params}
+                                className="MuiAutocomplete-inputRootDense"
+                                label={`${val ? "" : "Empty "}String`}
+                                margin="dense"
+                            />
+                        )}
+                        sx={autocompleteSx}
+                    />
                 ) : (
                     <TextField
                         value={val || ""}
                         onChange={onValueChange}
                         label={`${val ? "" : "Empty "}String`}
                         margin="dense"
+                        slotProps={{
+                            input: {
+                                endAdornment: (
+                                    <Tooltip title={matchCase ? "Exact match" : "Ignore case"}>
+                                        <IconButton onClick={toggleMatchCase} size="small">
+                                            <MatchCase color={matchCase ? "primary" : "disabled"} />
+                                        </IconButton>
+                                    </Tooltip>
+                                ),
+                            },
+                        }}
                     />
                 )}
             </Grid>
-            <Grid item xs={1}>
+
+            <Grid size={1}>
                 <Tooltip title="Validate">
                     <span>
                         <IconButton onClick={onCheckClick} disabled={!enableCheck} sx={iconInRowSx}>
@@ -265,7 +340,7 @@ const FilterRow = (props: FilterRowProps) => {
                     </span>
                 </Tooltip>
             </Grid>
-            <Grid item xs={1}>
+            <Grid size={1}>
                 <Tooltip title="Delete">
                     <span>
                         <IconButton onClick={onDeleteClick} disabled={!enableDel} sx={iconInRowSx}>
@@ -279,11 +354,26 @@ const FilterRow = (props: FilterRowProps) => {
 };
 
 const TableFilter = (props: TableFilterProps) => {
-    const { onValidate, appliedFilters, columns, colsOrder, className = "", filteredCount } = props;
+    const {
+        fieldHeader = "Column",
+        fieldHeaderTooltip = "Select the column to filter",
+        columns,
+        onValidate,
+        appliedFilters,
+        className = "",
+        filteredCount,
+    } = props;
 
     const [showFilter, setShowFilter] = useState(false);
     const filterRef = useRef<HTMLButtonElement | null>(null);
     const [filters, setFilters] = useState<Array<FilterDesc>>([]);
+
+    const colsOrder = useMemo(() => {
+        if (props.colsOrder) {
+            return props.colsOrder;
+        }
+        return Object.keys(columns).sort(getSortByIndex(columns));
+    }, [props.colsOrder, columns]);
 
     const onShowFilterClick = useCallback(() => setShowFilter((f) => !f), []);
 
@@ -331,18 +421,7 @@ const TableFilter = (props: TableFilterProps) => {
                     sx={iconInRowSx}
                     className={getSuffixedClassNames(className, "-filter-icon")}
                 >
-                    <Badge
-                        badgeContent={filters.length}
-                        color="primary"
-                        sx={{
-                            "& .MuiBadge-badge": {
-                                height: "10px",
-                                minWidth: "10px",
-                                width: "10px",
-                                borderRadius: "5px",
-                            },
-                        }}
-                    >
+                    <Badge badgeContent={filters.length} color="primary" sx={badgeSx}>
                         <FilterListIcon fontSize="inherit" />
                     </Badge>
                 </IconButton>
@@ -360,6 +439,8 @@ const TableFilter = (props: TableFilterProps) => {
                             <FilterRow
                                 key={"fd" + idx}
                                 idx={idx}
+                                fieldHeader={fieldHeader}
+                                fieldHeaderTooltip={fieldHeaderTooltip}
                                 filter={fd}
                                 columns={columns}
                                 colsOrder={colsOrder}
@@ -368,6 +449,8 @@ const TableFilter = (props: TableFilterProps) => {
                         ))}
                         <FilterRow
                             idx={-(filters.length + 1)}
+                            fieldHeader={fieldHeader}
+                            fieldHeaderTooltip={fieldHeaderTooltip}
                             columns={columns}
                             colsOrder={colsOrder}
                             setFilter={updateFilter}

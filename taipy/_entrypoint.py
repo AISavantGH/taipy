@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,15 +13,15 @@ import os
 import sys
 from importlib.util import find_spec
 
-from taipy._cli._base_cli._taipy_parser import _TaipyParser
-from taipy.core._core_cli import _CoreCLI
+from taipy.common._cli._base_cli._taipy_parser import _TaipyParser
+from taipy.common._cli._create_cli_factory import _CreateCLIFactory
+from taipy.common._cli._help_cli import _HelpCLI
+from taipy.common._cli._run_cli import _RunCLI
+from taipy.core._cli._core_cli_factory import _CoreCLIFactory
 from taipy.core._entity._migrate_cli import _MigrateCLI
-from taipy.core._version._cli._version_cli import _VersionCLI
+from taipy.core._version._cli._version_cli_factory import _VersionCLIFactory
 from taipy.gui._gui_cli import _GuiCLI
 
-from ._cli._help_cli import _HelpCLI
-from ._cli._run_cli import _RunCLI
-from ._cli._scaffold_cli import _ScaffoldCLI
 from .version import _get_version
 
 
@@ -36,19 +36,28 @@ def _entrypoint():
         help="Print the current Taipy version and exit.",
     )
 
+    if find_spec("taipy.enterprise"):
+        from taipy.enterprise._entrypoint import _entrypoint_initialize as _enterprise_entrypoint_initialize
+
+        _enterprise_entrypoint_initialize()
+
+    _core_cli = _CoreCLIFactory._build_cli()
+    _create_cli = _CreateCLIFactory._build_cli()
+
     _RunCLI.create_parser()
     _GuiCLI.create_run_parser()
-    _CoreCLI.create_run_parser()
+    _core_cli.create_run_parser()
 
-    _VersionCLI.create_parser()
-    _ScaffoldCLI.create_parser()
+    _VersionCLIFactory._build_cli().create_parser()
+    _create_cli.generate_template_map()
+    _create_cli.create_parser()
     _MigrateCLI.create_parser()
     _HelpCLI.create_parser()
 
     if find_spec("taipy.enterprise"):
-        from taipy.enterprise._entrypoint import _entrypoint as _enterprise_entrypoint
+        from taipy.enterprise._entrypoint import _entrypoint_handling as _enterprise_entrypoint_handling
 
-        _enterprise_entrypoint()
+        _enterprise_entrypoint_handling()
 
     args, _ = _TaipyParser._parser.parse_known_args()
     if args.version:
@@ -57,9 +66,9 @@ def _entrypoint():
 
     _RunCLI.handle_command()
     _HelpCLI.handle_command()
-    _VersionCLI.handle_command()
+    _VersionCLIFactory._build_cli().handle_command()
     _MigrateCLI.handle_command()
-    _ScaffoldCLI.handle_command()
+    _create_cli.handle_command()
 
     _TaipyParser._remove_argument("help")
     _TaipyParser._parser.print_help()

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -22,27 +22,40 @@ import React, {
     SyntheticEvent,
     MouseEvent,
     useRef,
+    lazy,
+    Suspense,
 } from "react";
-import { CheckCircle, Cancel, ArrowForwardIosSharp, Launch, LockOutlined } from "@mui/icons-material";
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
-import Grid from "@mui/material/Grid";
+import Grid from "@mui/material/Grid2";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import Popover from "@mui/material/Popover";
 import Switch from "@mui/material/Switch";
+import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+
+import ArrowForwardIosSharp from "@mui/icons-material/ArrowForwardIosSharp";
+import Cancel from "@mui/icons-material/Cancel";
+import CheckCircle from "@mui/icons-material/CheckCircle";
+import Download from "@mui/icons-material/Download";
+import Launch from "@mui/icons-material/Launch";
+import LockOutlined from "@mui/icons-material/LockOutlined";
+import Upload from "@mui/icons-material/Upload";
+
 import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
 import { BaseDateTimePickerSlotProps } from "@mui/x-date-pickers/DateTimePicker/shared";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFnsV3";
 import { format } from "date-fns";
 import deepEqual from "fast-deep-equal/es6";
 
@@ -54,33 +67,40 @@ import {
     createRequestUpdateAction,
     createSendActionNameAction,
     getUpdateVar,
+    useClassNames,
     useDynamicProperty,
     useModule,
     Store,
+    FileSelector,
+    getComponentClassName,
 } from "taipy-gui";
 
 import { Cycle as CycleIcon, Scenario as ScenarioIcon } from "./icons";
 import {
     AccordionIconSx,
     AccordionSummarySx,
+    CoreProps,
     FieldNoMaxWidth,
     IconPaddingSx,
     MainBoxSx,
     TableViewType,
+    getUpdateVarNames,
     hoverSx,
     iconLabelSx,
     popoverOrigin,
     tinySelPinIconButtonSx,
-    useClassNames,
 } from "./utils";
-import PropertiesEditor from "./PropertiesEditor";
+import PropertiesEditor, { DatanodeProperties } from "./PropertiesEditor";
 import { NodeType, Scenarios } from "./utils/types";
 import CoreSelector from "./CoreSelector";
 import { useUniqueId } from "./utils/hooks";
 import DataNodeChart from "./DataNodeChart";
 import DataNodeTable from "./DataNodeTable";
+import { useTheme } from "@mui/material/styles";
 
-const editTimestampFormat = "YYY/MM/dd HH:mm";
+const JsonViewer = lazy(() => import("@textea/json-viewer").then((module) => ({ default: module.JsonViewer })));
+
+const editTimestampFormat = "yyyy/MM/dd HH:mm";
 
 const tabBoxSx = { borderBottom: 1, borderColor: "divider" };
 const noDisplay = { display: "none" };
@@ -92,6 +112,7 @@ const editSx = {
     "& > div": { writingMode: "vertical-rl", transform: "rotate(180deg)", paddingBottom: "1em" },
 };
 const textFieldProps = { textField: { margin: "dense" } } as BaseDateTimePickerSlotProps<Date>;
+const buttonSx = { minWidth: "0px" };
 
 type DataNodeFull = [
     string, // id
@@ -103,11 +124,14 @@ type DataNodeFull = [
     string, // ownerId
     string, // ownerLabel
     number, // ownerType
-    Array<[string, string]>, // properties
+    DatanodeData, // data
     boolean, // editInProgress
     string, // editorId
-    boolean, // readable
-    boolean // editable
+    string, // notReadableReason
+    string, // notEditableReason
+    boolean, // is file based
+    string, // notDownloadableReason
+    string // notUploadableReason
 ];
 
 enum DataNodeFullProps {
@@ -120,11 +144,14 @@ enum DataNodeFullProps {
     ownerId,
     ownerLabel,
     ownerType,
-    properties,
+    data,
     editInProgress,
     editorId,
-    readable,
-    editable,
+    notReadableReason,
+    notEditableReason,
+    isFileBased,
+    notDownloadableReason,
+    notUploadableReason,
 }
 const DataNodeFullLength = Object.keys(DataNodeFullProps).length / 2;
 
@@ -136,41 +163,38 @@ enum DatanodeDataProps {
     error,
 }
 
-interface DataNodeViewerProps {
-    id?: string;
+interface DataNodeViewerProps extends CoreProps {
     expandable?: boolean;
     expanded?: boolean;
-    updateVarName?: string;
-    updateVars: string;
     defaultDataNode?: string;
     dataNode?: DataNodeFull | Array<DataNodeFull>;
     onEdit?: string;
-    onIdSelect?: string;
-    error?: string;
-    coreChanged?: Record<string, unknown>;
-    defaultActive: boolean;
-    active: boolean;
     showConfig?: boolean;
     showOwner?: boolean;
     showEditDate?: boolean;
     showExpirationDate?: boolean;
+    showCustomProperties?: boolean;
     showProperties?: boolean;
     showHistory?: boolean;
     showData?: boolean;
     chartConfigs?: string;
-    libClassName?: string;
-    className?: string;
-    dynamicClassName?: string;
     scenarios?: Scenarios;
     history?: Array<[string, string, string]>;
     data?: DatanodeData;
     tabularData?: TableValueType;
     tabularColumns?: string;
+    dnProperties?: DatanodeProperties;
     onDataValue?: string;
     onTabularDataEdit?: string;
     chartConfig?: string;
     width?: string;
     onLock?: string;
+    updateDnVars?: string;
+    fileDownload?: boolean;
+    fileUpload?: boolean;
+    uploadCheck?: string;
+    onFileAction?: string;
+    showOwnerLabel?: boolean;
 }
 
 const dataValueFocus = "data-value";
@@ -184,7 +208,25 @@ const getValidDataNode = (datanode: DataNodeFull | DataNodeFull[]) =>
         ? (datanode[0] as DataNodeFull)
         : undefined;
 
-const invalidDatanode: DataNodeFull = ["", "", "", "", "", "", "", "", -1, [], false, "", false, false];
+const invalidDatanode: DataNodeFull = [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    -1,
+    [null, null, null, null],
+    false,
+    "",
+    "invalid",
+    "invalid",
+    false,
+    "invalid",
+    "invalid",
+];
 
 enum TabValues {
     Data,
@@ -201,14 +243,21 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
         showOwner = true,
         showEditDate = false,
         showExpirationDate = false,
+        showCustomProperties = true,
         showProperties = true,
         showHistory = true,
         showData = true,
+        updateVars = "",
+        updateDnVars = "",
+        fileDownload = false,
+        fileUpload = false,
+        showOwnerLabel = false,
+        coreChanged,
     } = props;
 
     const { state, dispatch } = useContext<Store>(Context);
     const module = useModule();
-    const uniqid = useUniqueId(id);
+    const uniqId = useUniqueId(id);
     const editorId = (state as { id: string }).id;
     const editLock = useRef(false);
     const [valid, setValid] = useState(false);
@@ -224,38 +273,88 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
         dnOwnerId,
         dnOwnerLabel,
         dnOwnerType,
-        dnProperties,
+        dnData,
         dnEditInProgress,
         dnEditorId,
-        dnReadable,
-        dnEditable,
+        dnNotReadableReason,
+        dnNotEditableReason,
+        isFileBased,
+        dnNotDownloadableReason,
+        dnNotUploadableReason,
     ] = datanode;
+    const dtType = dnData[DatanodeDataProps.type];
+    const dtValue = dnData[DatanodeDataProps.value] ?? (dtType == "float" ? null : undefined);
+    const dtTabular = dnData[DatanodeDataProps.tabular] ?? false;
+    const dtError = dnData[DatanodeDataProps.error];
+
+    const theme = useTheme();
 
     // Tabs
-    const [tabValue, setTabValue] = useState<TabValues>(TabValues.Data);
+    const [tabValue, setTabValue] = useState<TabValues | undefined>(
+        showData ? TabValues.Data : showProperties ? TabValues.Properties : showHistory ? TabValues.History : undefined
+    );
     const handleTabChange = useCallback(
         (_: SyntheticEvent, newValue: number) => {
             if (valid) {
                 if (newValue == TabValues.History) {
-                    setHistoryRequested(
-                        (req) =>
-                            req ||
-                            dispatch(createSendActionNameAction(id, module, props.onIdSelect, { history_id: dnId })) ||
-                            true
-                    );
+                    setHistoryRequested((req) => {
+                        if (!req) {
+                            const idVar = getUpdateVar(updateDnVars, "history_id");
+                            dispatch(
+                                createRequestUpdateAction(
+                                    id,
+                                    module,
+                                    getUpdateVarNames(updateVars, "history"),
+                                    true,
+                                    idVar ? { [idVar]: dnId } : undefined
+                                )
+                            );
+                        }
+                        return true;
+                    });
+                    setDataRequested(false);
+                    setPropertiesRequested(false);
                 } else if (newValue == TabValues.Data) {
-                    setDataRequested(
-                        (req) =>
-                            req ||
-                            dispatch(createSendActionNameAction(id, module, props.onIdSelect, { data_id: dnId })) ||
-                            true
-                    );
+                    setDataRequested((req) => {
+                        if (!req && dtTabular) {
+                            const idVar = getUpdateVar(updateDnVars, "data_id");
+                            dispatch(
+                                createRequestUpdateAction(
+                                    id,
+                                    module,
+                                    getUpdateVarNames(updateVars, "tabularData", "tabularColumns"),
+                                    true,
+                                    idVar ? { [idVar]: dnId } : undefined
+                                )
+                            );
+                        }
+                        return true;
+                    });
+                    setHistoryRequested(false);
+                    setPropertiesRequested(false);
+                } else if (newValue == TabValues.Properties) {
+                    setPropertiesRequested((req) => {
+                        if (!req) {
+                            const idVar = getUpdateVar(updateDnVars, "properties_id");
+                            dispatch(
+                                createRequestUpdateAction(
+                                    id,
+                                    module,
+                                    getUpdateVarNames(updateVars, "dnProperties"),
+                                    true,
+                                    idVar ? { [idVar]: dnId } : undefined
+                                )
+                            );
+                        }
+                        return true;
+                    });
+                    setDataRequested(false);
                     setHistoryRequested(false);
                 }
                 setTabValue(newValue);
             }
         },
-        [dnId, dispatch, id, valid, module, props.onIdSelect]
+        [dnId, dispatch, id, valid, module, updateVars, updateDnVars, dtTabular]
     );
 
     useEffect(() => {
@@ -278,37 +377,67 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
             const isNewDn = oldDn[DataNodeFullProps.id] !== newDnId;
             // clean lock on change
             if (oldDn[DataNodeFullProps.id] && isNewDn && editLock.current) {
-                dispatch(
-                    createSendActionNameAction(id, module, props.onLock, {
-                        id: oldDn[DataNodeFullProps.id],
-                        lock: false,
-                    })
+                const oldId = oldDn[DataNodeFullProps.id];
+                Promise.resolve().then(() =>
+                    dispatch(
+                        createSendActionNameAction(id, module, props.onLock, {
+                            id: oldId,
+                            lock: false,
+                            error_id: getUpdateVar(updateDnVars, "error_id"),
+                        })
+                    )
                 );
             }
             if (!dn || isNewDn) {
-                setTabValue(showData ? TabValues.Data : TabValues.Properties);
+                (showData || showProperties || showHistory) &&
+                    setTabValue(
+                        showData
+                            ? TabValues.Data
+                            : showProperties
+                            ? TabValues.Properties
+                            : showHistory
+                            ? TabValues.History
+                            : undefined
+                    );
             }
             if (!dn) {
                 return invalidDatanode;
             }
             editLock.current = dn[DataNodeFullProps.editInProgress];
             setHistoryRequested((req) => {
-                if (req && !isNewDn && tabValue == TabValues.History) {
-                    dispatch(
-                        createSendActionNameAction(id, module, props.onIdSelect, {
-                            history_id: newDnId,
-                        })
+                if (req && showHistory && !isNewDn && tabValue == TabValues.History) {
+                    const idVar = getUpdateVar(updateDnVars, "history_id");
+                    const vars = getUpdateVarNames(updateVars, "history");
+                    Promise.resolve().then(() =>
+                        dispatch(
+                            createRequestUpdateAction(id, module, vars, true, idVar ? { [idVar]: newDnId } : undefined)
+                        )
                     );
                     return true;
                 }
                 return false;
             });
             setDataRequested(() => {
-                if (tabValue == TabValues.Data) {
-                    dispatch(
-                        createSendActionNameAction(id, module, props.onIdSelect, {
-                            data_id: newDnId,
-                        })
+                if (showData && tabValue == TabValues.Data && dn[DataNodeFullProps.data][DatanodeDataProps.tabular]) {
+                    const idVar = getUpdateVar(updateDnVars, "data_id");
+                    const vars = getUpdateVarNames(updateVars, "tabularData", "tabularColumns");
+                    Promise.resolve().then(() =>
+                        dispatch(
+                            createRequestUpdateAction(id, module, vars, true, idVar ? { [idVar]: newDnId } : undefined)
+                        )
+                    );
+                    return true;
+                }
+                return false;
+            });
+            setPropertiesRequested((req) => {
+                if ((req || !showData) && showProperties && tabValue == TabValues.Properties) {
+                    const idVar = getUpdateVar(updateDnVars, "properties_id");
+                    const vars = getUpdateVarNames(updateVars, "dnProperties");
+                    Promise.resolve().then(() =>
+                        dispatch(
+                            createRequestUpdateAction(id, module, vars, true, idVar ? { [idVar]: newDnId } : undefined)
+                        )
                     );
                     return true;
                 }
@@ -320,24 +449,41 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
             return dn;
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.dataNode, props.defaultDataNode, showData, id, dispatch, module, props.onLock, props.onIdSelect]);
+    }, [
+        props.dataNode,
+        props.defaultDataNode,
+        showData,
+        showProperties,
+        showHistory,
+        id,
+        dispatch,
+        module,
+        props.onLock,
+    ]);
 
     // clean lock on unmount
     useEffect(
         () => () => {
             dnId &&
                 editLock.current &&
-                dispatch(createSendActionNameAction(id, module, props.onLock, { id: dnId, lock: false }));
+                dispatch(
+                    createSendActionNameAction(id, module, props.onLock, {
+                        id: dnId,
+                        lock: false,
+                        error_id: getUpdateVar(updateDnVars, "error_id"),
+                    })
+                );
         },
-        [dnId, id, dispatch, module, props.onLock]
+        [dnId, id, dispatch, module, props.onLock, updateDnVars]
     );
 
-    const active = useDynamicProperty(props.active, props.defaultActive, true) && dnReadable;
+    const active = useDynamicProperty(props.active, props.defaultActive, true) && !dnNotReadableReason;
     const className = useClassNames(props.libClassName, props.dynamicClassName, props.className);
 
     // history & data
     const [historyRequested, setHistoryRequested] = useState(false);
     const [dataRequested, setDataRequested] = useState(false);
+    const [propertiesRequested, setPropertiesRequested] = useState(false);
 
     // userExpanded
     const [userExpanded, setUserExpanded] = useState(valid && expanded);
@@ -353,11 +499,17 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
             e.stopPropagation();
             setFocusName(e.currentTarget.dataset.focus || "");
             if (e.currentTarget.dataset.focus === dataValueFocus && !editLock.current) {
-                dispatch(createSendActionNameAction(id, module, props.onLock, { id: dnId, lock: true }));
+                dispatch(
+                    createSendActionNameAction(id, module, props.onLock, {
+                        id: dnId,
+                        lock: true,
+                        error_id: getUpdateVar(updateDnVars, "error_id"),
+                    })
+                );
                 editLock.current = true;
             }
         },
-        [dnId, props.onLock, id, dispatch, module]
+        [dnId, props.onLock, id, dispatch, module, updateDnVars]
     );
 
     // Label
@@ -366,11 +518,17 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
         (e: MouseEvent<HTMLElement>) => {
             e.stopPropagation();
             if (valid) {
-                dispatch(createSendActionNameAction(id, module, props.onEdit, { id: dnId, name: label }));
+                dispatch(
+                    createSendActionNameAction(id, module, props.onEdit, {
+                        id: dnId,
+                        name: label,
+                        error_id: getUpdateVar(updateDnVars, "error_id"),
+                    })
+                );
                 setFocusName("");
             }
         },
-        [valid, props.onEdit, dnId, label, id, dispatch, module]
+        [valid, props.onEdit, dnId, label, id, dispatch, module, updateDnVars]
     );
     const cancelLabel = useCallback(
         (e: MouseEvent<HTMLElement>) => {
@@ -378,48 +536,52 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
             setLabel(dnLabel);
             setFocusName("");
         },
-        [dnLabel, setLabel, setFocusName]
+        [dnLabel]
     );
     const onLabelChange = useCallback((e: ChangeEvent<HTMLInputElement>) => setLabel(e.target.value), []);
 
     // scenarios
     const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+    const scenarioUpdateVars = useMemo(
+        () => ["scenario", "scenarios"].map((vn) => getUpdateVar(updateVars, vn)),
+        [updateVars]
+    );
     const showScenarios = useCallback(
         (e: MouseEvent<HTMLElement>) => {
             e.stopPropagation();
             if (valid) {
-                dispatch(createSendActionNameAction(id, module, props.onIdSelect, { owner_id: dnOwnerId }));
+                const ownerIdVar = getUpdateVar(updateDnVars, "owner_id");
+                dispatch(
+                    createRequestUpdateAction(
+                        id,
+                        module,
+                        scenarioUpdateVars.filter((v) => v) as string[],
+                        true,
+                        ownerIdVar ? { [ownerIdVar]: dnOwnerId } : undefined
+                    )
+                );
                 setAnchorEl(e.currentTarget);
             }
         },
-        [dnOwnerId, dispatch, id, valid, module, props.onIdSelect]
+        [dnOwnerId, valid, updateDnVars, scenarioUpdateVars, dispatch, id, module]
     );
     const handleClose = useCallback(() => setAnchorEl(null), []);
-    const scenarioUpdateVars = useMemo(
-        () => [getUpdateVar(props.updateVars, "scenario"), getUpdateVar(props.updateVars, "scenarios")],
-        [props.updateVars]
-    );
 
     const [comment, setComment] = useState("");
-    const changeComment = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-        setComment(e.currentTarget.value);
-    }, []);
+    const changeComment = useCallback((e: ChangeEvent<HTMLInputElement>) => setComment(e.currentTarget.value), []);
 
     // on datanode change
     useEffect(() => {
         setLabel(dnLabel);
         setUserExpanded(expanded && valid);
         setHistoryRequested(false);
-        setDataRequested(true);
+        setDataRequested(showData);
+        setPropertiesRequested(!showData);
         setViewType(TableViewType);
         setComment("");
-    }, [dnId, dnLabel, valid, expanded]);
+    }, [dnId, dnLabel, valid, expanded, showData]);
 
     // Datanode data
-    const dtType = props.data && props.data[DatanodeDataProps.type];
-    const dtValue = (props.data && props.data[DatanodeDataProps.value]) ?? (dtType == "float" ? null : undefined);
-    const dtTabular = (props.data && props.data[DatanodeDataProps.tabular]) ?? false;
-    const dtError = props.data && props.data[DatanodeDataProps.error];
     const [dataValue, setDataValue] = useState<RowValue | Date>();
     const editDataValue = useCallback(
         (e: MouseEvent<HTMLElement>) => {
@@ -431,21 +593,29 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                         value: dataValue,
                         type: dtType,
                         comment: comment,
+                        error_id: getUpdateVar(updateDnVars, "error_id"),
+                        data_id: getUpdateVar(updateDnVars, "data_id"),
                     })
                 );
                 setFocusName("");
             }
         },
-        [valid, props.onDataValue, dnId, dataValue, dtType, id, dispatch, module, comment]
+        [valid, props.onDataValue, dnId, dataValue, dtType, id, dispatch, module, comment, updateDnVars]
     );
     const cancelDataValue = useCallback(
         (e: MouseEvent<HTMLElement>) => {
             e.stopPropagation();
             setDataValue(getDataValue(dtValue, dtType));
             setFocusName("");
-            dispatch(createSendActionNameAction(id, module, props.onLock, { id: dnId, lock: false }));
+            dispatch(
+                createSendActionNameAction(id, module, props.onLock, {
+                    id: dnId,
+                    lock: false,
+                    error_id: getUpdateVar(updateDnVars, "error_id"),
+                })
+            );
         },
-        [dtValue, dtType, dnId, id, dispatch, module, props.onLock, setDataValue, setFocusName]
+        [dtValue, dtType, dnId, id, dispatch, module, props.onLock, updateDnVars]
     );
     const onDataValueChange = useCallback((e: ChangeEvent<HTMLInputElement>) => setDataValue(e.target.value), []);
     const onDataValueDateChange = useCallback((d: Date | null) => d && setDataValue(d), []);
@@ -460,11 +630,20 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
     const onViewTypeChange = useCallback(
         (e: MouseEvent, value?: string) => {
             if (value) {
-                dispatch(createSendActionNameAction(id, module, props.onIdSelect, { chart_id: dnId }));
+                const idVar = getUpdateVar(updateDnVars, "chart_id");
+                dispatch(
+                    createRequestUpdateAction(
+                        id,
+                        module,
+                        getUpdateVarNames(updateVars, "chartConfig"),
+                        true,
+                        idVar ? { [idVar]: dnId } : undefined
+                    )
+                );
                 setViewType(value);
             }
         },
-        [dnId, dispatch, id, module, props.onIdSelect]
+        [dnId, updateVars, updateDnVars, dispatch, id, module]
     );
 
     // base tabular columns
@@ -484,85 +663,154 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
         [props.width]
     );
 
+    // file action
+    const onFileHandler = useCallback(
+        (e: MouseEvent<HTMLElement>) => {
+            e.stopPropagation();
+            const { action = "import" } = e.currentTarget.dataset || {};
+            if (action == "export") {
+                dispatch(
+                    createSendActionNameAction(id, module, props.onFileAction, {
+                        id: dnId,
+                        action: action,
+                        type: "raw",
+                        error_id: getUpdateVar(updateDnVars, "error_id"),
+                    })
+                );
+            }
+        },
+        [props.onFileAction, dispatch, dnId, id, module, updateDnVars]
+    );
+
+    const uploadData = useMemo(
+        () =>
+            valid && isFileBased && fileUpload
+                ? JSON.stringify({
+                      id: dnId,
+                      error_id: getUpdateVar(updateDnVars, "error_id"),
+                      upload_check: props.uploadCheck,
+                  })
+                : undefined,
+        [dnId, valid, isFileBased, fileUpload, props.uploadCheck, updateDnVars]
+    );
+
     // Refresh on broadcast
     useEffect(() => {
-        const ids = props.coreChanged?.datanode;
+        const ids = coreChanged?.datanode;
         if ((typeof ids === "string" && ids === dnId) || (Array.isArray(ids) && ids.includes(dnId))) {
             props.updateVarName && dispatch(createRequestUpdateAction(id, module, [props.updateVarName], true));
         }
-    }, [props.coreChanged, props.updateVarName, id, module, dispatch, dnId]);
+    }, [coreChanged, props.updateVarName, id, module, dispatch, dnId]);
 
     return (
         <>
-            <Box sx={dnMainBoxSx} id={id} onClick={onFocus} className={className}>
+            <Box
+                sx={dnMainBoxSx}
+                id={id}
+                onClick={onFocus}
+                className={`${className} ${getComponentClassName(props.children)}`}
+            >
                 <Accordion defaultExpanded={expanded} expanded={userExpanded} onChange={onExpand} disabled={!valid}>
                     <AccordionSummary
                         expandIcon={expandable ? <ArrowForwardIosSharp sx={AccordionIconSx} /> : null}
                         sx={AccordionSummarySx}
                     >
-                        <Grid container alignItems="baseline" direction="row" spacing={1}>
-                            <Grid item>{dnLabel}</Grid>
-                            <Grid item>
-                                <Typography fontSize="smaller">{dnType}</Typography>
-                            </Grid>
-                        </Grid>
+                        <Stack direction="row" spacing={1} alignItems="baseline">
+                            {showOwnerLabel ? <Typography>{dnOwnerLabel} &gt;</Typography> : null}
+                            <Typography>{dnLabel}</Typography>
+                            <Typography fontSize="smaller">{dnType}</Typography>
+                        </Stack>
                     </AccordionSummary>
                     <AccordionDetails>
                         <Box sx={tabBoxSx}>
-                            <Tabs value={tabValue} onChange={handleTabChange}>
-                                <Tab
-                                    label={
-                                        <Grid container alignItems="center">
-                                            <Grid item>Data</Grid>
-                                            {dnEditInProgress ? (
-                                                <Grid item>
-                                                    <Tooltip
-                                                        title={"locked " + (dnEditorId === editorId ? "by you" : "")}
+                            <Stack direction="row" justifyContent="space-between">
+                                <Tabs value={tabValue} onChange={handleTabChange}>
+                                    <Tab
+                                        label={
+                                            <Grid container alignItems="center">
+                                                <Grid>Data</Grid>
+                                                {dnEditInProgress ? (
+                                                    <Grid>
+                                                        <Tooltip
+                                                            title={
+                                                                "locked " + (dnEditorId === editorId ? "by you" : "")
+                                                            }
+                                                        >
+                                                            <LockOutlined
+                                                                fontSize="small"
+                                                                color={dnEditorId === editorId ? "disabled" : "primary"}
+                                                            />
+                                                        </Tooltip>
+                                                    </Grid>
+                                                ) : null}
+                                            </Grid>
+                                        }
+                                        id={`${uniqId}-data`}
+                                        aria-controls={`${uniqId}-dn-tabpanel-data`}
+                                        style={showData ? undefined : noDisplay}
+                                    />
+                                    <Tab
+                                        label="Properties"
+                                        id={`${uniqId}-properties`}
+                                        aria-controls={`${uniqId}-dn-tabpanel-properties`}
+                                        style={showProperties ? undefined : noDisplay}
+                                    />
+                                    <Tab
+                                        label="History"
+                                        id={`${uniqId}-history`}
+                                        aria-controls={`${uniqId}-dn-tabpanel-history`}
+                                        style={showHistory ? undefined : noDisplay}
+                                    />
+                                </Tabs>
+                                {valid && isFileBased && (fileDownload || fileUpload) ? (
+                                    <Stack direction="row" spacing={1}>
+                                        {fileDownload ? (
+                                            <Tooltip
+                                                title={dnNotDownloadableReason ? dnNotDownloadableReason : "Download"}
+                                            >
+                                                <span>
+                                                    <Button
+                                                        data-action="export"
+                                                        onClick={onFileHandler}
+                                                        sx={buttonSx}
+                                                        disabled={!!dnNotDownloadableReason}
                                                     >
-                                                        <LockOutlined
-                                                            fontSize="small"
-                                                            color={dnEditorId === editorId ? "disabled" : "primary"}
-                                                        />
-                                                    </Tooltip>
-                                                </Grid>
-                                            ) : null}
-                                        </Grid>
-                                    }
-                                    id={`${uniqid}-data`}
-                                    aria-controls={`${uniqid}-dn-tabpanel-data`}
-                                    style={showData ? undefined : noDisplay}
-                                />
-                                <Tab
-                                    label="Properties"
-                                    id={`${uniqid}-properties`}
-                                    aria-controls={`${uniqid}-dn-tabpanel-properties`}
-                                />
-                                <Tab
-                                    label="History"
-                                    id={`${uniqid}-history`}
-                                    aria-controls={`${uniqid}-dn-tabpanel-history`}
-                                    style={showHistory ? undefined : noDisplay}
-                                />
-                            </Tabs>
+                                                        <Download />
+                                                    </Button>
+                                                </span>
+                                            </Tooltip>
+                                        ) : null}
+                                        {fileUpload ? (
+                                            <FileSelector
+                                                hoverText={dnNotUploadableReason ? dnNotUploadableReason : "Upload"}
+                                                icon={<Upload />}
+                                                withBorder={false}
+                                                onUploadAction={props.onFileAction}
+                                                uploadData={uploadData}
+                                                defaultActive={!dnNotUploadableReason}
+                                            />
+                                        ) : null}
+                                    </Stack>
+                                ) : null}
+                            </Stack>
                         </Box>
                         <div
                             role="tabpanel"
                             hidden={tabValue !== TabValues.Properties}
-                            id={`${uniqid}-dn-tabpanel-properties`}
-                            aria-labelledby={`${uniqid}-properties`}
+                            id={`${uniqId}-dn-tabpanel-properties`}
+                            aria-labelledby={`${uniqId}-properties`}
                         >
                             <Grid container rowSpacing={2} sx={gridSx}>
-                                <Grid item xs={12} container justifyContent="space-between" spacing={1}>
+                                <Grid size={12} container justifyContent="space-between" spacing={1}>
                                     <Grid
-                                        item
-                                        xs={12}
+                                        size={12}
                                         container
                                         justifyContent="space-between"
                                         data-focus="label"
                                         onClick={onFocus}
                                         sx={hoverSx}
                                     >
-                                        {active && dnEditable && focusName === "label" ? (
+                                        {active && !dnNotEditableReason && focusName === "label" ? (
                                             <TextField
                                                 label="Label"
                                                 variant="outlined"
@@ -570,38 +818,40 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                                                 sx={FieldNoMaxWidth}
                                                 value={label || ""}
                                                 onChange={onLabelChange}
-                                                InputProps={{
-                                                    endAdornment: (
-                                                        <InputAdornment position="end">
-                                                            <Tooltip title="Apply">
-                                                                <IconButton
-                                                                    sx={IconPaddingSx}
-                                                                    onClick={editLabel}
-                                                                    size="small"
-                                                                >
-                                                                    <CheckCircle color="primary" />
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                            <Tooltip title="Cancel">
-                                                                <IconButton
-                                                                    sx={IconPaddingSx}
-                                                                    onClick={cancelLabel}
-                                                                    size="small"
-                                                                >
-                                                                    <Cancel color="inherit" />
-                                                                </IconButton>
-                                                            </Tooltip>
-                                                        </InputAdornment>
-                                                    ),
+                                                slotProps={{
+                                                    input: {
+                                                        endAdornment: (
+                                                            <InputAdornment position="end">
+                                                                <Tooltip title="Apply">
+                                                                    <IconButton
+                                                                        sx={IconPaddingSx}
+                                                                        onClick={editLabel}
+                                                                        size="small"
+                                                                    >
+                                                                        <CheckCircle color="primary" />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                                <Tooltip title="Cancel">
+                                                                    <IconButton
+                                                                        sx={IconPaddingSx}
+                                                                        onClick={cancelLabel}
+                                                                        size="small"
+                                                                    >
+                                                                        <Cancel color="inherit" />
+                                                                    </IconButton>
+                                                                </Tooltip>
+                                                            </InputAdornment>
+                                                        ),
+                                                    },
                                                 }}
                                                 disabled={!valid}
                                             />
                                         ) : (
                                             <>
-                                                <Grid item xs={4}>
+                                                <Grid size={4}>
                                                     <Typography variant="subtitle2">Label</Typography>
                                                 </Grid>
-                                                <Grid item xs={8}>
+                                                <Grid size={8}>
                                                     <Typography variant="subtitle2">{dnLabel}</Typography>
                                                 </Grid>
                                             </>
@@ -609,41 +859,41 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                                     </Grid>
                                 </Grid>
                                 {showEditDate ? (
-                                    <Grid item xs={12} container justifyContent="space-between">
-                                        <Grid item xs={4}>
+                                    <Grid size={12} container justifyContent="space-between">
+                                        <Grid size={4}>
                                             <Typography variant="subtitle2">Last edit date</Typography>
                                         </Grid>
-                                        <Grid item xs={8}>
+                                        <Grid size={8}>
                                             <Typography variant="subtitle2">{dnEditDate}</Typography>
                                         </Grid>
                                     </Grid>
                                 ) : null}
                                 {showExpirationDate ? (
-                                    <Grid item xs={12} container justifyContent="space-between">
-                                        <Grid item xs={4}>
+                                    <Grid size={12} container justifyContent="space-between">
+                                        <Grid size={4}>
                                             <Typography variant="subtitle2">Expiration date</Typography>
                                         </Grid>
-                                        <Grid item xs={8}>
+                                        <Grid size={8}>
                                             <Typography variant="subtitle2">{dnExpirationDate}</Typography>
                                         </Grid>
                                     </Grid>
                                 ) : null}
                                 {showConfig ? (
-                                    <Grid item xs={12} container justifyContent="space-between">
-                                        <Grid item xs={4} pb={2}>
+                                    <Grid size={12} container justifyContent="space-between">
+                                        <Grid size={4} pb={2}>
                                             <Typography variant="subtitle2">Config ID</Typography>
                                         </Grid>
-                                        <Grid item xs={8}>
+                                        <Grid size={8}>
                                             <Typography variant="subtitle2">{dnConfig}</Typography>
                                         </Grid>
                                     </Grid>
                                 ) : null}
                                 {showOwner ? (
-                                    <Grid item xs={12} container justifyContent="space-between">
-                                        <Grid item xs={4}>
+                                    <Grid size={12} container justifyContent="space-between">
+                                        <Grid size={4}>
                                             <Typography variant="subtitle2">Owner</Typography>
                                         </Grid>
-                                        <Grid item xs={7} sx={iconLabelSx}>
+                                        <Grid size={7} sx={iconLabelSx}>
                                             {dnOwnerType === NodeType.CYCLE ? (
                                                 <CycleIcon fontSize="small" color="primary" />
                                             ) : dnOwnerType === NodeType.SCENARIO ? (
@@ -651,7 +901,7 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                                             ) : null}
                                             <Typography variant="subtitle2">{dnOwnerLabel}</Typography>
                                         </Grid>
-                                        <Grid item xs={1}>
+                                        <Grid size={1}>
                                             {dnOwnerId ? (
                                                 <>
                                                     <Tooltip title="Show Scenarios">
@@ -680,6 +930,8 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                                                             updateVarName={scenarioUpdateVars[0]}
                                                             updateVars={`scenarios=${scenarioUpdateVars[1]}`}
                                                             onSelect={handleClose}
+                                                            updateCoreVars=""
+                                                            showSearch={false}
                                                         />
                                                     </Popover>
                                                 </>
@@ -687,58 +939,59 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                                         </Grid>
                                     </Grid>
                                 ) : null}
-                                <Grid item xs={12}>
+                                <Grid size={12}>
                                     <Divider />
                                 </Grid>
                                 <PropertiesEditor
                                     entityId={dnId}
-                                    active={active}
+                                    active={!!active}
                                     isDefined={valid}
-                                    entProperties={dnProperties}
-                                    show={showProperties}
+                                    entProperties={
+                                        propertiesRequested && Array.isArray(props.dnProperties)
+                                            ? props.dnProperties
+                                            : []
+                                    }
+                                    show={showCustomProperties}
                                     focusName={focusName}
                                     setFocusName={setFocusName}
                                     onFocus={onFocus}
                                     onEdit={props.onEdit}
-                                    editable={dnEditable}
+                                    notEditableReason={dnNotEditableReason}
+                                    updateVars={updateDnVars}
                                 />
                             </Grid>
                         </div>
                         <div
                             role="tabpanel"
                             hidden={tabValue !== TabValues.History}
-                            id={`${uniqid}-dn-tabpanel-history`}
-                            aria-labelledby={`${uniqid}-history`}
+                            id={`${uniqId}-dn-tabpanel-history`}
+                            aria-labelledby={`${uniqId}-history`}
                         >
                             {historyRequested && Array.isArray(props.history) ? (
                                 <Grid container spacing={1}>
                                     {props.history.map((edit, idx) => (
                                         <Fragment key={`edit-${idx}`}>
                                             {idx != 0 ? (
-                                                <Grid item xs={12}>
+                                                <Grid size={12}>
                                                     <Divider />
                                                 </Grid>
                                             ) : null}
-                                            <Grid item container>
-                                                <Grid item xs={0.4} sx={editSx}>
+                                            <Grid container>
+                                                <Grid size={0.4} sx={editSx}>
                                                     <Box>{(props.history || []).length - idx}</Box>
                                                 </Grid>
-                                                <Grid item xs={0.1}></Grid>
-                                                <Grid item container xs={11.5}>
-                                                    <Grid item xs={12}>
+                                                <Grid size={0.1}></Grid>
+                                                <Grid container size={11.5}>
+                                                    <Grid size={12}>
                                                         <Typography variant="subtitle1">
                                                             {edit[0]
                                                                 ? format(new Date(edit[0]), editTimestampFormat)
                                                                 : "no date"}
                                                         </Typography>
                                                     </Grid>
-                                                    {edit[2] ? (
-                                                        <Grid item xs={12}>
-                                                            {edit[2]}
-                                                        </Grid>
-                                                    ) : null}
+                                                    {edit[2] ? <Grid size={12}>{edit[2]}</Grid> : null}
                                                     {edit[1] ? (
-                                                        <Grid item xs={12}>
+                                                        <Grid size={12}>
                                                             <Typography fontSize="smaller">{edit[1]}</Typography>
                                                         </Grid>
                                                     ) : null}
@@ -754,102 +1007,102 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                         <div
                             role="tabpanel"
                             hidden={tabValue !== TabValues.Data}
-                            id={`${uniqid}-dn-tabpanel-data`}
-                            aria-labelledby={`${uniqid}-data`}
+                            id={`${uniqId}-dn-tabpanel-data`}
+                            aria-labelledby={`${uniqId}-data`}
                         >
-                            {dataRequested ? (
-                                dtValue !== undefined ? (
-                                    <Grid container justifyContent="space-between" spacing={1}>
-                                        <Grid
-                                            item
-                                            container
-                                            xs={12}
-                                            justifyContent="space-between"
-                                            data-focus={dataValueFocus}
-                                            onClick={onFocus}
-                                            sx={hoverSx}
-                                        >
-                                            {active &&
-                                            dnEditable &&
-                                            dnEditInProgress &&
-                                            dnEditorId === editorId &&
-                                            focusName === dataValueFocus ? (
-                                                <>
-                                                    {typeof dtValue == "boolean" ? (
-                                                        <>
-                                                            <Grid item xs={10}>
-                                                                <Switch
-                                                                    value={dataValue as boolean}
-                                                                    onChange={onDataValueChange}
-                                                                />
-                                                            </Grid>
-                                                            <Grid item xs={2}>
-                                                                <Tooltip title="Apply">
-                                                                    <IconButton
-                                                                        onClick={editDataValue}
-                                                                        size="small"
-                                                                        sx={IconPaddingSx}
-                                                                    >
-                                                                        <CheckCircle color="primary" />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                                <Tooltip title="Cancel">
-                                                                    <IconButton
-                                                                        onClick={cancelDataValue}
-                                                                        size="small"
-                                                                        sx={IconPaddingSx}
-                                                                    >
-                                                                        <Cancel color="inherit" />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                            </Grid>
-                                                        </>
-                                                    ) : dtType == "date" && (dataValue === null || dataValue instanceof Date)  ? (
-                                                        <LocalizationProvider dateAdapter={AdapterDateFns}>
-                                                            <Grid item xs={10}>
-                                                                <DateTimePicker
-                                                                    value={dataValue as Date}
-                                                                    onChange={onDataValueDateChange}
-                                                                    slotProps={textFieldProps}
-                                                                />
-                                                            </Grid>
-                                                            <Grid item xs={2}>
-                                                                <Tooltip title="Apply">
-                                                                    <IconButton
-                                                                        onClick={editDataValue}
-                                                                        size="small"
-                                                                        sx={IconPaddingSx}
-                                                                    >
-                                                                        <CheckCircle color="primary" />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                                <Tooltip title="Cancel">
-                                                                    <IconButton
-                                                                        onClick={cancelDataValue}
-                                                                        size="small"
-                                                                        sx={IconPaddingSx}
-                                                                    >
-                                                                        <Cancel color="inherit" />
-                                                                    </IconButton>
-                                                                </Tooltip>
-                                                            </Grid>
-                                                        </LocalizationProvider>
-                                                    ) : (
-                                                        <TextField
-                                                            label="Value"
-                                                            variant="outlined"
-                                                            fullWidth
-                                                            sx={FieldNoMaxWidth}
-                                                            value={dataValue || ""}
-                                                            onChange={onDataValueChange}
-                                                            type={
-                                                                typeof dtValue == "number"
-                                                                    ? "number"
-                                                                    : dtType == "float" && dtValue === null
-                                                                    ? "number"
-                                                                    : undefined
-                                                            }
-                                                            InputProps={{
+                            {dtValue !== undefined ? (
+                                <Grid container justifyContent="space-between" spacing={1}>
+                                    <Grid
+                                        container
+                                        size={12}
+                                        justifyContent="space-between"
+                                        data-focus={dataValueFocus}
+                                        onClick={dtType === "dict" ? undefined : onFocus}
+                                        sx={hoverSx}
+                                    >
+                                        {active &&
+                                        !dnNotEditableReason &&
+                                        dnEditInProgress &&
+                                        dnEditorId === editorId &&
+                                        focusName === dataValueFocus ? (
+                                            <>
+                                                {typeof dtValue == "boolean" ? (
+                                                    <>
+                                                        <Grid size={10}>
+                                                            <Switch
+                                                                value={dataValue as boolean}
+                                                                onChange={onDataValueChange}
+                                                            />
+                                                        </Grid>
+                                                        <Grid size={2}>
+                                                            <Tooltip title="Apply">
+                                                                <IconButton
+                                                                    onClick={editDataValue}
+                                                                    size="small"
+                                                                    sx={IconPaddingSx}
+                                                                >
+                                                                    <CheckCircle color="primary" />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                            <Tooltip title="Cancel">
+                                                                <IconButton
+                                                                    onClick={cancelDataValue}
+                                                                    size="small"
+                                                                    sx={IconPaddingSx}
+                                                                >
+                                                                    <Cancel color="inherit" />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Grid>
+                                                    </>
+                                                ) : dtType == "date" &&
+                                                  (dataValue === null || dataValue instanceof Date) ? (
+                                                    <LocalizationProvider dateAdapter={AdapterDateFns}>
+                                                        <Grid size={10}>
+                                                            <DateTimePicker
+                                                                value={dataValue as Date}
+                                                                onChange={onDataValueDateChange}
+                                                                slotProps={textFieldProps}
+                                                            />
+                                                        </Grid>
+                                                        <Grid size={2}>
+                                                            <Tooltip title="Apply">
+                                                                <IconButton
+                                                                    onClick={editDataValue}
+                                                                    size="small"
+                                                                    sx={IconPaddingSx}
+                                                                >
+                                                                    <CheckCircle color="primary" />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                            <Tooltip title="Cancel">
+                                                                <IconButton
+                                                                    onClick={cancelDataValue}
+                                                                    size="small"
+                                                                    sx={IconPaddingSx}
+                                                                >
+                                                                    <Cancel color="inherit" />
+                                                                </IconButton>
+                                                            </Tooltip>
+                                                        </Grid>
+                                                    </LocalizationProvider>
+                                                ) : (
+                                                    <TextField
+                                                        label="Value"
+                                                        variant="outlined"
+                                                        fullWidth
+                                                        sx={FieldNoMaxWidth}
+                                                        value={dataValue || ""}
+                                                        onChange={onDataValueChange}
+                                                        type={
+                                                            typeof dtValue == "number"
+                                                                ? "number"
+                                                                : dtType == "float" && dtValue === null
+                                                                ? "number"
+                                                                : undefined
+                                                        }
+                                                        slotProps={{
+                                                            input: {
                                                                 endAdornment: (
                                                                     <InputAdornment position="end">
                                                                         <Tooltip title="Apply">
@@ -872,72 +1125,79 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                                                                         </Tooltip>
                                                                     </InputAdornment>
                                                                 ),
-                                                            }}
-                                                            disabled={!valid}
+                                                            },
+                                                        }}
+                                                        disabled={!valid}
+                                                    />
+                                                )}
+                                                <TextField
+                                                    value={comment}
+                                                    onChange={changeComment}
+                                                    label="Comment"
+                                                ></TextField>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Grid size={4}>
+                                                    <Typography variant="subtitle2">Value</Typography>
+                                                </Grid>
+                                                <Grid size={8}>
+                                                    {typeof dtValue == "boolean" ? (
+                                                        <Switch
+                                                            defaultChecked={dtValue}
+                                                            disabled={true}
+                                                            title={`${dtValue}`}
                                                         />
+                                                    ) : dtType === "dict" ? (
+                                                        <Suspense fallback={<div>Loading JSON Viewer...</div>}>
+                                                            <JsonViewer value={dtValue} theme={theme.palette.mode} />
+                                                        </Suspense>
+                                                    ) : (
+                                                        <Typography variant="subtitle2">
+                                                            {dtType == "date"
+                                                                ? (dataValue === null || dataValue instanceof Date) &&
+                                                                  format(dataValue as Date, "yyyy/MM/dd HH:mm:ss")
+                                                                : dtType == "float" && dtValue === null
+                                                                ? "NaN"
+                                                                : `${dtValue}`}
+                                                        </Typography>
                                                     )}
-                                                    <TextField
-                                                        value={comment}
-                                                        onChange={changeComment}
-                                                        label="Comment"
-                                                    ></TextField>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Grid item xs={4}>
-                                                        <Typography variant="subtitle2">Value</Typography>
-                                                    </Grid>
-                                                    <Grid item xs={8}>
-                                                        {typeof dtValue == "boolean" ? (
-                                                            <Switch
-                                                                defaultChecked={dtValue}
-                                                                disabled={true}
-                                                                title={`${dtValue}`}
-                                                            />
-                                                        ) : (
-                                                            <Typography variant="subtitle2">
-                                                                {dtType == "date"
-                                                                    ? (dataValue === null || dataValue instanceof Date) &&
-                                                                      format(dataValue as Date, "yyyy/MM/dd HH:mm:ss")
-                                                                    : dtType == "float" && dtValue === null
-                                                                    ? "NaN"
-                                                                    : dtValue}
-                                                            </Typography>
-                                                        )}
-                                                    </Grid>
-                                                </>
-                                            )}
-                                        </Grid>
+                                                </Grid>
+                                            </>
+                                        )}
                                     </Grid>
-                                ) : dtError ? (
-                                    <Typography>{dtError}</Typography>
-                                ) : dtTabular ? (
+                                </Grid>
+                            ) : dtError ? (
+                                <Typography>{dtError}</Typography>
+                            ) : dtTabular ? (
+                                dataRequested ? (
                                     <>
                                         {viewType === TableViewType ? (
                                             <DataNodeTable
-                                                active={active}
-                                                uniqid={uniqid}
+                                                active={!!active}
+                                                uniqId={uniqId}
                                                 columns={tabularColumns}
                                                 data={props.tabularData}
                                                 nodeId={dnId}
                                                 configId={dnConfig}
                                                 onViewTypeChange={onViewTypeChange}
-                                                updateVarName={getUpdateVar(props.updateVars, "tabularData")}
+                                                updateVarName={getUpdateVar(updateVars, "tabularData")}
                                                 onEdit={props.onTabularDataEdit}
                                                 onLock={props.onLock}
                                                 editInProgress={dnEditInProgress && dnEditorId !== editorId}
                                                 editLock={editLock}
-                                                editable={dnEditable}
+                                                notEditableReason={dnNotEditableReason}
+                                                updateDnVars={updateDnVars}
                                             />
                                         ) : (
                                             <DataNodeChart
-                                                active={active}
-                                                uniqid={uniqid}
+                                                active={!!active}
+                                                uniqId={uniqId}
                                                 columns={tabularColumns}
                                                 tabularData={props.tabularData}
                                                 configId={dnConfig}
                                                 defaultConfig={props.chartConfig}
-                                                updateVarName={getUpdateVar(props.updateVars, "tabularData")}
+                                                updateVarName={getUpdateVar(updateVars, "tabularData")}
                                                 chartConfigs={props.chartConfigs}
                                                 onViewTypeChange={onViewTypeChange}
                                             />
@@ -952,8 +1212,9 @@ const DataNodeViewer = (props: DataNodeViewerProps) => {
                         </div>
                     </AccordionDetails>
                 </Accordion>
-                <Box>{props.error}</Box>
+                {props.error ? <Alert severity="error">{props.error}</Alert> : null}
             </Box>
+            {props.children}
         </>
     );
 };

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -41,7 +41,7 @@ def update_setup_requirements(package: str, versions: Dict, publish_on_py_pi: bo
 if __name__ == "__main__":
     _package = sys.argv[1]
     _versions = {
-        "taipy-config": sys.argv[2],
+        "taipy-common": sys.argv[2],
         "taipy-core": sys.argv[3],
         "taipy-gui": sys.argv[4],
         "taipy-rest": sys.argv[5],

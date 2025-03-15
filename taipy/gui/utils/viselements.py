@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,15 +13,16 @@ import typing as t
 from copy import deepcopy
 
 
-class VisElementProperties(t.TypedDict, total=False):
+class VisElementProperties(t.TypedDict):
     name: str
     type: str
     doc: str
     default_value: t.Any
     default_property: t.Any
+    hide: t.Optional[bool]
 
 
-class VisElementDetail(t.TypedDict, total=False):
+class VisElementDetail(t.TypedDict):
     inherits: t.List[str]
     properties: t.List[VisElementProperties]
 
@@ -40,6 +41,7 @@ def _resolve_inherit_property(element: VisElement, viselements: VisElements) -> 
     properties = deepcopy(element_detail["properties"])
     if "inherits" not in element_detail:
         return properties
+    hidden_property_names = [p.get("name") for p in properties if p.get("hide", False)]
     for inherit in element_detail["inherits"]:
         inherit_element = None
         for element_type in "blocks", "controls", "undocumented":
@@ -48,11 +50,13 @@ def _resolve_inherit_property(element: VisElement, viselements: VisElements) -> 
                 break
         if inherit_element is None:
             raise RuntimeError(f"Error resolving inherit element with name {inherit} in viselements.json")
-        properties = properties + _resolve_inherit_property(inherit_element, viselements)
+        inherited_props = _resolve_inherit_property(inherit_element, viselements)
+        properties = properties + [p for p in inherited_props if p.get("name") not in hidden_property_names]
     return properties
 
 
 def resolve_inherits(viselements: VisElements) -> VisElements:
+    """NOT DOCUMENTED"""
     for element_type in "blocks", "controls":
         for element in viselements[element_type]:  # type: ignore[literal-required]
             element[1]["properties"] = _resolve_inherit_property(element, viselements)

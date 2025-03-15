@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -10,12 +10,13 @@
 # specific language governing permissions and limitations under the License.
 
 from datetime import timedelta
-from typing import Dict, List, cast
+from inspect import isclass
+from typing import Callable, Dict, List, cast
 
-from taipy.config._config import _Config
-from taipy.config.checker._checkers._config_checker import _ConfigChecker
-from taipy.config.checker.issue_collector import IssueCollector
-from taipy.config.common.scope import Scope
+from taipy.common.config._config import _Config
+from taipy.common.config.checker._checkers._config_checker import _ConfigChecker
+from taipy.common.config.checker.issue_collector import IssueCollector
+from taipy.core.common.scope import Scope
 
 from ...scenario.scenario import Scenario
 from ...task.task import Task
@@ -46,7 +47,7 @@ class _DataNodeConfigChecker(_ConfigChecker):
             self._check_scope(data_node_config_id, data_node_config)
             self._check_validity_period(data_node_config_id, data_node_config)
             self._check_required_properties(data_node_config_id, data_node_config)
-            self._check_callable(data_node_config_id, data_node_config)
+            self._check_property_types(data_node_config_id, data_node_config)
             self._check_generic_read_write_fct_and_args(data_node_config_id, data_node_config)
             self._check_exposed_type(data_node_config_id, data_node_config)
         return self._collector
@@ -101,49 +102,64 @@ class _DataNodeConfigChecker(_ConfigChecker):
                 f" None or populated with a timedelta value.",
             )
 
+    @staticmethod
+    def __get_sql_required_properties(storage_type: str, dn_config_properties: Dict) -> List:
+        if storage_type == DataNodeConfig._STORAGE_TYPE_VALUE_SQL:
+            if dn_config_properties:
+                if engine := dn_config_properties.get(DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY):
+                    if engine == DataNodeConfig._DB_ENGINE_SQLITE:
+                        required_properties = [
+                            DataNodeConfig._REQUIRED_DB_NAME_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_READ_QUERY_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_WRITE_QUERY_BUILDER_SQL_PROPERTY,
+                        ]
+                    else:
+                        required_properties = [
+                            DataNodeConfig._OPTIONAL_DB_USERNAME_SQL_PROPERTY,
+                            DataNodeConfig._OPTIONAL_DB_PASSWORD_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_DB_NAME_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_READ_QUERY_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_WRITE_QUERY_BUILDER_SQL_PROPERTY,
+                        ]
+                    return required_properties
+        if storage_type == DataNodeConfig._STORAGE_TYPE_VALUE_SQL_TABLE:
+            if dn_config_properties:
+                if engine := dn_config_properties.get(DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY):
+                    if engine == DataNodeConfig._DB_ENGINE_SQLITE:
+                        required_properties = [
+                            DataNodeConfig._REQUIRED_DB_NAME_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_TABLE_NAME_SQL_TABLE_PROPERTY,
+                        ]
+                    else:
+                        required_properties = [
+                            DataNodeConfig._OPTIONAL_DB_USERNAME_SQL_PROPERTY,
+                            DataNodeConfig._OPTIONAL_DB_PASSWORD_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_DB_NAME_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY,
+                            DataNodeConfig._REQUIRED_TABLE_NAME_SQL_TABLE_PROPERTY,
+                        ]
+                    return required_properties
+        return []
+
+    def __storage_type_specific_required_properties(self, storage_type: str, dn_config_properties: Dict) -> List:
+        if storage_type in (DataNodeConfig._STORAGE_TYPE_VALUE_SQL_TABLE, DataNodeConfig._STORAGE_TYPE_VALUE_SQL):
+            return self.__get_sql_required_properties(storage_type, dn_config_properties)
+        return []
+
     def _check_required_properties(self, data_node_config_id: str, data_node_config: DataNodeConfig):
         storage_type = data_node_config.storage_type
         if not storage_type or storage_type not in DataNodeConfig._REQUIRED_PROPERTIES:
             return
 
         required_properties = DataNodeConfig._REQUIRED_PROPERTIES[storage_type]
-        if storage_type == DataNodeConfig._STORAGE_TYPE_VALUE_SQL:
-            if data_node_config.properties:
-                if engine := data_node_config.properties.get(DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY):
-                    if engine == DataNodeConfig._DB_ENGINE_SQLITE:
-                        required_properties = [
-                            DataNodeConfig._REQUIRED_DB_NAME_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_READ_QUERY_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_WRITE_QUERY_BUILDER_SQL_PROPERTY,
-                        ]
-                    else:
-                        required_properties = [
-                            DataNodeConfig._OPTIONAL_DB_USERNAME_SQL_PROPERTY,
-                            DataNodeConfig._OPTIONAL_DB_PASSWORD_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_DB_NAME_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_READ_QUERY_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_WRITE_QUERY_BUILDER_SQL_PROPERTY,
-                        ]
-        if storage_type == DataNodeConfig._STORAGE_TYPE_VALUE_SQL_TABLE:
-            if data_node_config.properties:
-                if engine := data_node_config.properties.get(DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY):
-                    if engine == DataNodeConfig._DB_ENGINE_SQLITE:
-                        required_properties = [
-                            DataNodeConfig._REQUIRED_DB_NAME_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_TABLE_NAME_SQL_TABLE_PROPERTY,
-                        ]
-                    else:
-                        required_properties = [
-                            DataNodeConfig._OPTIONAL_DB_USERNAME_SQL_PROPERTY,
-                            DataNodeConfig._OPTIONAL_DB_PASSWORD_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_DB_NAME_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_DB_ENGINE_SQL_PROPERTY,
-                            DataNodeConfig._REQUIRED_TABLE_NAME_SQL_TABLE_PROPERTY,
-                        ]
-        for required_property in required_properties:
+        required_properties.extend(
+            self.__storage_type_specific_required_properties(storage_type, data_node_config.properties)
+        )
+
+        for required_property in set(required_properties):
             if not data_node_config.properties or required_property not in data_node_config.properties:
                 if data_node_config_id == DataNodeConfig._DEFAULT_KEY:
                     self._warning(
@@ -196,36 +212,45 @@ class _DataNodeConfigChecker(_ConfigChecker):
                     f"DataNodeConfig `{data_node_config_id}` must be populated with a Callable function.",
                 )
 
-    def _check_callable(self, data_node_config_id: str, data_node_config: DataNodeConfig):
-        properties_to_check = {
-            DataNodeConfig._STORAGE_TYPE_VALUE_GENERIC: [
-                DataNodeConfig._OPTIONAL_READ_FUNCTION_GENERIC_PROPERTY,
-                DataNodeConfig._OPTIONAL_WRITE_FUNCTION_GENERIC_PROPERTY,
-            ],
-            DataNodeConfig._STORAGE_TYPE_VALUE_SQL: [
-                DataNodeConfig._REQUIRED_WRITE_QUERY_BUILDER_SQL_PROPERTY,
-                DataNodeConfig._OPTIONAL_APPEND_QUERY_BUILDER_SQL_PROPERTY,
-            ],
-        }
-
-        if data_node_config.storage_type in properties_to_check.keys():
-            for prop_key in properties_to_check[data_node_config.storage_type]:
+    def _check_property_types(self, data_node_config_id: str, data_node_config: DataNodeConfig):
+        if property_types := data_node_config._PROPERTIES_TYPES.get(data_node_config.storage_type):
+            for prop_key, prop_type in property_types.items():
                 prop_value = data_node_config.properties.get(prop_key) if data_node_config.properties else None
-                if prop_value and not callable(prop_value):
-                    self._error(
-                        prop_key,
-                        prop_value,
-                        f"`{prop_key}` of DataNodeConfig `{data_node_config_id}` must be"
-                        f" populated with a Callable function.",
-                    )
+
+                if prop_value:
+                    if isclass(prop_type) and isclass(prop_value):
+                        if not issubclass(prop_value, prop_type):
+                            self._error(
+                                prop_key,
+                                prop_value,
+                                f"`{prop_key}` of DataNodeConfig `{data_node_config_id}` must be"
+                                f" populated with a subclass of {prop_type}.",
+                            )
+                    elif not isinstance(prop_value, prop_type):
+                        self._error(
+                            prop_key,
+                            prop_value,
+                            f"`{prop_key}` of DataNodeConfig `{data_node_config_id}` must be"
+                            f" populated with a {prop_type}.",
+                        )
+                    elif prop_type == Callable and callable(prop_value) and prop_value.__name__ == "<lambda>":
+                        self._error(
+                            prop_key,
+                            prop_value,
+                            f"`{prop_key}` of DataNodeConfig `{data_node_config_id}` must be"
+                            f" populated with a serializable typing.Callable function but not a lambda.",
+                        )
 
     def _check_exposed_type(self, data_node_config_id: str, data_node_config: DataNodeConfig):
         if not isinstance(data_node_config.exposed_type, str):
             return
         if data_node_config.exposed_type not in DataNodeConfig._ALL_EXPOSED_TYPES:
+            valid_exposed_types_str = ", ".join(
+                [f'"{x}"' for x in DataNodeConfig._ALL_EXPOSED_TYPES if isinstance(x, str)]
+            )
             self._error(
                 data_node_config._EXPOSED_TYPE_KEY,
                 data_node_config.exposed_type,
                 f"The `{data_node_config._EXPOSED_TYPE_KEY}` of DataNodeConfig `{data_node_config_id}` "
-                f'must be either "pandas", "numpy", or a custom type.',
+                f"must be either {valid_exposed_types_str}, or a custom type.",
             )

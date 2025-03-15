@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -12,6 +12,8 @@
 import sys
 import typing as t
 from types import FrameType
+
+from .._warnings import _warn
 
 
 def _get_module_name_from_frame(frame: FrameType):
@@ -29,3 +31,17 @@ def _get_module_name_from_imported_var(var_name: str, value: t.Any, sub_module_n
             return m
     # failed fetching any matched module with variable and value
     return sub_module_name
+
+
+def _get_absolute_module_name_from_ast(based_module: str, relative_module: str, level: int) -> str:
+    # Level 0 == absolute module path
+    # Level 1 == relative to the current module
+    if level == 0:
+        return relative_module
+    based_module_name_list = based_module.split(".")
+    if level > len(based_module_name_list):
+        _warn(
+            f"There is an error resolving the absolute module path for {relative_module}. The application might behave unexpectedly."  # noqa: E501
+        )
+        return relative_module
+    return ".".join(based_module_name_list[:-level] + [relative_module])

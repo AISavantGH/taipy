@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,14 +9,13 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-from importlib import util
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 from pandas.testing import assert_frame_equal
 
-from taipy.config.common.scope import Scope
+from taipy import Scope
 from taipy.core.data.operator import JoinOperator, Operator
 from taipy.core.data.sql_table import SQLTableDataNode
 
@@ -30,60 +29,6 @@ class MyCustomObject:
 
 
 class TestFilterSQLTableDataNode:
-    __pandas_properties = [
-        {
-            "db_name": "taipy",
-            "db_engine": "sqlite",
-            "table_name": "example",
-            "db_extra_args": {
-                "TrustServerCertificate": "yes",
-                "other": "value",
-            },
-        },
-    ]
-
-    if util.find_spec("pyodbc"):
-        __pandas_properties.append(
-            {
-                "db_username": "sa",
-                "db_password": "Passw0rd",
-                "db_name": "taipy",
-                "db_engine": "mssql",
-                "table_name": "example",
-                "db_extra_args": {
-                    "TrustServerCertificate": "yes",
-                },
-            },
-        )
-
-    if util.find_spec("pymysql"):
-        __pandas_properties.append(
-            {
-                "db_username": "sa",
-                "db_password": "Passw0rd",
-                "db_name": "taipy",
-                "db_engine": "mysql",
-                "table_name": "example",
-                "db_extra_args": {
-                    "TrustServerCertificate": "yes",
-                },
-            },
-        )
-
-    if util.find_spec("psycopg2"):
-        __pandas_properties.append(
-            {
-                "db_username": "sa",
-                "db_password": "Passw0rd",
-                "db_name": "taipy",
-                "db_engine": "postgresql",
-                "table_name": "example",
-                "db_extra_args": {
-                    "TrustServerCertificate": "yes",
-                },
-            },
-        )
-
     def test_filter_pandas_exposed_type(self, tmp_sqlite_sqlite3_file_path):
         folder_path, db_name, file_extension = tmp_sqlite_sqlite3_file_path
         properties = {

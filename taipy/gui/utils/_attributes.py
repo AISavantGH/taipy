@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -18,36 +18,36 @@ if t.TYPE_CHECKING:
 
 def _getscopeattr(gui: "Gui", name: str, *more) -> t.Any:
     if more:
-        return getattr(gui._get_data_scope(), name, more[0])
-    return getattr(gui._get_data_scope(), name)
+        return getattr(gui._get_data_scope(), name, more[0])  # type: ignore[attr-defined]
+    return getattr(gui._get_data_scope(), name)  # type: ignore[attr-defined]
 
 
 def _getscopeattr_drill(gui: "Gui", name: str) -> t.Any:
-    return attrgetter(name)(gui._get_data_scope())
+    return attrgetter(name)(gui._get_data_scope())  # type: ignore[attr-defined]
 
 
 def _setscopeattr(gui: "Gui", name: str, value: t.Any):
-    if gui._is_broadcasting():
-        for scope in gui._get_all_data_scopes().values():
+    if gui._is_broadcasting():  # type: ignore[attr-defined]
+        for scope in gui._get_all_data_scopes().values():  # type: ignore[attr-defined]
             setattr(scope, name, value)
     else:
-        setattr(gui._get_data_scope(), name, value)
+        setattr(gui._get_data_scope(), name, value)  # type: ignore[attr-defined]
 
 
 def _setscopeattr_drill(gui: "Gui", name: str, value: t.Any):
-    if gui._is_broadcasting():
-        for scope in gui._get_all_data_scopes().values():
+    if gui._is_broadcasting():  # type: ignore[attr-defined]
+        for scope in gui._get_all_data_scopes().values():  # type: ignore[attr-defined]
             _attrsetter(scope, name, value)
     else:
-        _attrsetter(gui._get_data_scope(), name, value)
+        _attrsetter(gui._get_data_scope(), name, value)  # type: ignore[attr-defined]
 
 
 def _hasscopeattr(gui: "Gui", name: str) -> bool:
-    return hasattr(gui._get_data_scope(), name)
+    return hasattr(gui._get_data_scope(), name)  # type: ignore[attr-defined]
 
 
 def _delscopeattr(gui: "Gui", name: str):
-    delattr(gui._get_data_scope(), name)
+    delattr(gui._get_data_scope(), name)  # type: ignore[attr-defined]
 
 
 def _attrsetter(obj: object, attr_str: str, value: object) -> None:

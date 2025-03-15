@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,7 +11,7 @@
 
 from typing import Iterable
 
-from taipy.logger._taipy_logger import _TaipyLogger
+from taipy.common.logger._taipy_logger import _TaipyLogger
 
 from ..data import DataNode
 
@@ -34,7 +34,7 @@ def _warn_if_inputs_not_ready(inputs: Iterable[DataNode]):
             ]:
                 logger.warning(
                     f"{dn.id} cannot be read because it has never been written. "
-                    f"Hint: The data node may refer to a wrong path : {dn.path} "
+                    f"Hint: The data node may refer to a wrong path : {dn.properties['path']} "
                 )
             else:
                 logger.warning(f"{dn.id} cannot be read because it has never been written.")

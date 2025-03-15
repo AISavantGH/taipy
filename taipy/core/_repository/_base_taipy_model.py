@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,15 +14,11 @@ import enum
 import json
 from typing import Any, Dict
 
-from sqlalchemy import Table
-
 from ._decoder import _Decoder
 from ._encoder import _Encoder
 
 
 class _BaseModel:
-    __table__: Table
-
     def __iter__(self):
         yield from self.__dict__.items()
 

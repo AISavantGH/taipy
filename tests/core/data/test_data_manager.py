@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -8,13 +8,14 @@
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
+
 import os
 import pathlib
 
 import pytest
 
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
+from taipy import Scope
+from taipy.common.config import Config
 from taipy.core._version._version_manager import _VersionManager
 from taipy.core.config.data_node_config import DataNodeConfig
 from taipy.core.data._data_manager import _DataManager
@@ -23,6 +24,7 @@ from taipy.core.data.data_node_id import DataNodeId
 from taipy.core.data.in_memory import InMemoryDataNode
 from taipy.core.data.pickle import PickleDataNode
 from taipy.core.exceptions.exceptions import InvalidDataNodeType, ModelNotFound
+from taipy.core.reason import EntityDoesNotExist, NotGlobalScope, WrongConfigType
 from tests.core.utils.named_temporary_file import NamedTemporaryFile
 
 
@@ -43,6 +45,33 @@ class TestDataManager:
         assert dn_config.properties.get("baz") is None
         assert dn.properties.get("foo") == "bar"
         assert dn.properties.get("baz") == "qux"
+
+    def test_can_create(self):
+        dn_config = Config.configure_data_node("dn", 10, scope=Scope.SCENARIO)
+        global_dn_config = Config.configure_data_node(
+            id="global_dn", storage_type="in_memory", scope=Scope.GLOBAL, data=10
+        )
+
+        reasons = _DataManager._can_create()
+        assert bool(reasons) is True
+        assert reasons._reasons == {}
+
+        reasons = _DataManager._can_create(global_dn_config)
+        assert bool(reasons) is True
+        assert reasons._reasons == {}
+
+        reasons = _DataManager._can_create(dn_config)
+        assert bool(reasons) is False
+        assert reasons._reasons[dn_config.id] == {NotGlobalScope(dn_config.id)}
+        assert (
+            str(list(reasons._reasons[dn_config.id])[0])
+            == f"Data node config '{dn_config.id}' does not have GLOBAL scope"
+        )
+
+        reasons = _DataManager._can_create(1)
+        assert bool(reasons) is False
+        assert reasons._reasons["1"] == {WrongConfigType("1", DataNodeConfig.__name__)}
+        assert str(list(reasons._reasons["1"])[0]) == "Object '1' must be a valid DataNodeConfig"
 
     def test_create_data_node_with_name_provided(self):
         dn_config = Config.configure_data_node(id="dn", foo="bar", name="acb")
@@ -77,11 +106,14 @@ class TestDataManager:
         assert _DataManager._get(csv_dn.id).job_ids == csv_dn.job_ids
         assert not _DataManager._get(csv_dn.id).is_ready_for_reading
         assert _DataManager._get(csv_dn.id).is_ready_for_reading == csv_dn.is_ready_for_reading
-        assert len(_DataManager._get(csv_dn.id).properties) == 4
+        assert (
+            len(_DataManager._get(csv_dn.id).properties) == 5
+        )  # path, encoding, has_header, exposed_type, is_generated
         assert _DataManager._get(csv_dn.id).properties.get("path") == "bar"
         assert _DataManager._get(csv_dn.id).properties.get("encoding") == "utf-8"
         assert _DataManager._get(csv_dn.id).properties.get("has_header") is True
         assert _DataManager._get(csv_dn.id).properties.get("exposed_type") == "pandas"
+        assert _DataManager._get(csv_dn.id).properties.get("is_generated") is False
         assert _DataManager._get(csv_dn.id).properties == csv_dn.properties
         assert _DataManager._get(csv_dn.id).edit_in_progress is False
         assert _DataManager._get(csv_dn.id)._editor_id is None
@@ -103,11 +135,12 @@ class TestDataManager:
         assert _DataManager._get(csv_dn).job_ids == csv_dn.job_ids
         assert not _DataManager._get(csv_dn).is_ready_for_reading
         assert _DataManager._get(csv_dn).is_ready_for_reading == csv_dn.is_ready_for_reading
-        assert len(_DataManager._get(csv_dn).properties) == 4
+        assert len(_DataManager._get(csv_dn).properties) == 5  # path, encoding, has_header, exposed_type, is_generated
         assert _DataManager._get(csv_dn).properties.get("path") == "bar"
         assert _DataManager._get(csv_dn).properties.get("encoding") == "utf-8"
         assert _DataManager._get(csv_dn).properties.get("has_header") is True
         assert _DataManager._get(csv_dn.id).properties.get("exposed_type") == "pandas"
+        assert _DataManager._get(csv_dn.id).properties.get("is_generated") is False
         assert _DataManager._get(csv_dn).properties == csv_dn.properties
         assert _DataManager._get(csv_dn.id).edit_in_progress is False
         assert _DataManager._get(csv_dn.id)._editor_id is None
@@ -118,8 +151,9 @@ class TestDataManager:
         dn = _DataManager._create_and_set(config, None, None)
 
         assert _DataManager._get(dn.id).last_edit_date is None
-        assert len(_DataManager._get(dn.id).properties) == 1
-        assert _DataManager._get(dn.id).properties.get("is_generated")
+        assert len(_DataManager._get(dn.id).properties) == 2  # is_generated and path
+        assert isinstance(_DataManager._get(dn.id).properties.get("path"), str)
+        assert _DataManager._get(dn.id).properties.get("is_generated") is True
         assert not _DataManager._get(dn.id).edit_in_progress
         assert _DataManager._get(dn.id)._editor_id is None
         assert _DataManager._get(dn.id)._editor_expiration_date is None
@@ -127,8 +161,9 @@ class TestDataManager:
         dn.lock_edit("foo")
 
         assert _DataManager._get(dn.id).last_edit_date is None
-        assert len(_DataManager._get(dn.id).properties) == 1
-        assert _DataManager._get(dn.id).properties.get("is_generated")
+        assert len(_DataManager._get(dn.id).properties) == 2  # is_generated and path
+        assert isinstance(_DataManager._get(dn.id).properties.get("path"), str)
+        assert _DataManager._get(dn.id).properties.get("is_generated") is True
         assert _DataManager._get(dn.id).edit_in_progress
         assert _DataManager._get(dn.id).editor_id == "foo"
         assert _DataManager._get(dn.id).editor_expiration_date is not None
@@ -136,8 +171,9 @@ class TestDataManager:
         dn.unlock_edit("foo")
 
         assert _DataManager._get(dn.id).last_edit_date is None
-        assert len(_DataManager._get(dn.id).properties) == 1
-        assert _DataManager._get(dn.id).properties.get("is_generated")
+        assert len(_DataManager._get(dn.id).properties) == 2  # is_generated and path
+        assert isinstance(_DataManager._get(dn.id).properties.get("path"), str)
+        assert _DataManager._get(dn.id).properties.get("is_generated") is True
         assert not _DataManager._get(dn.id).edit_in_progress
         assert _DataManager._get(dn.id).editor_id is None
         assert _DataManager._get(dn.id).editor_expiration_date is None
@@ -226,7 +262,7 @@ class TestDataManager:
         assert _DataManager._get(pickle_dn.id).job_ids == pickle_dn.job_ids
         assert not _DataManager._get(pickle_dn.id).is_ready_for_reading
         assert _DataManager._get(pickle_dn.id).is_ready_for_reading == pickle_dn.is_ready_for_reading
-        assert len(_DataManager._get(pickle_dn.id).properties) == 1
+        assert len(_DataManager._get(pickle_dn.id).properties) == 2  # is_generated and path
         assert _DataManager._get(pickle_dn.id).properties == pickle_dn.properties
 
         assert _DataManager._get(pickle_dn) is not None
@@ -245,7 +281,7 @@ class TestDataManager:
         assert _DataManager._get(pickle_dn).job_ids == pickle_dn.job_ids
         assert not _DataManager._get(pickle_dn).is_ready_for_reading
         assert _DataManager._get(pickle_dn).is_ready_for_reading == pickle_dn.is_ready_for_reading
-        assert len(_DataManager._get(pickle_dn).properties) == 1
+        assert len(_DataManager._get(pickle_dn).properties) == 2  # is_generated and path
         assert _DataManager._get(pickle_dn).properties == pickle_dn.properties
 
     def test_create_raises_exception_with_wrong_type(self):
@@ -267,14 +303,14 @@ class TestDataManager:
         assert csv_dn.config_id == "foo"
         assert isinstance(csv_dn, CSVDataNode)
         assert csv_dn._path == "path_from_config_file"
-        assert csv_dn.has_header
+        assert csv_dn.properties["has_header"]
 
         csv_dn_cfg = Config.configure_data_node(id="baz", storage_type="csv", path="bar", has_header=True)
         csv_dn = _DataManager._create_and_set(csv_dn_cfg, None, None)
         assert csv_dn.config_id == "baz"
         assert isinstance(csv_dn, CSVDataNode)
         assert csv_dn._path == "bar"
-        assert csv_dn.has_header
+        assert csv_dn.properties["has_header"]
 
     def test_get_if_not_exists(self):
         with pytest.raises(ModelNotFound):
@@ -459,59 +495,89 @@ class TestDataManager:
 
         dm._delete_all()
 
-    def test_clean_generated_pickle_files(self, pickle_file_path):
-        user_pickle_dn_config = Config.configure_data_node(
-            id="d1", storage_type="pickle", path=pickle_file_path, default_data="d"
+    @pytest.mark.parametrize(
+        "storage_type,path",
+        [
+            ("pickle", "pickle_file_path"),
+            ("csv", "csv_file"),
+            ("excel", "excel_file"),
+            ("json", "json_file"),
+            ("parquet", "parquet_file_path"),
+        ],
+    )
+    def test_clean_generated_files(self, storage_type, path, request):
+        path = request.getfixturevalue(path)
+        user_dn_config = Config.configure_data_node(
+            id="d1", storage_type=storage_type, path=path, default_data={"a": [1], "b": [2]}
         )
-        generated_pickle_dn_1_config = Config.configure_data_node(id="d2", storage_type="pickle", default_data="d")
-        generated_pickle_dn_2_config = Config.configure_data_node(id="d3", storage_type="pickle", default_data="d")
-
-        dns = _DataManager._bulk_get_or_create(
-            [user_pickle_dn_config, generated_pickle_dn_1_config, generated_pickle_dn_2_config]
+        generated_dn_1_config = Config.configure_data_node(
+            id="d2", storage_type=storage_type, default_data={"a": [1], "b": [2]}
+        )
+        generated_dn_2_config = Config.configure_data_node(
+            id="d3", storage_type=storage_type, default_data={"a": [1], "b": [2]}
         )
 
-        user_pickle_dn = dns[user_pickle_dn_config]
-        generated_pickle_dn_1 = dns[generated_pickle_dn_1_config]
-        generated_pickle_dn_2 = dns[generated_pickle_dn_2_config]
+        dns = _DataManager._bulk_get_or_create([user_dn_config, generated_dn_1_config, generated_dn_2_config])
 
-        _DataManager._clean_pickle_file(user_pickle_dn.id)
-        assert file_exists(user_pickle_dn.path)
+        user_dn = dns[user_dn_config]
+        generated_dn_1 = dns[generated_dn_1_config]
+        generated_dn_2 = dns[generated_dn_2_config]
 
-        _DataManager._clean_pickle_files([generated_pickle_dn_1, generated_pickle_dn_2])
-        assert not file_exists(generated_pickle_dn_1.path)
-        assert not file_exists(generated_pickle_dn_2.path)
+        _DataManager._clean_generated_file(user_dn.id)
+        assert file_exists(user_dn.path)
 
-    def test_delete_does_clean_generated_pickle_files(self, pickle_file_path):
-        user_pickle_dn_config = Config.configure_data_node(
-            id="d1", storage_type="pickle", path=pickle_file_path, default_data="d"
+        _DataManager._clean_generated_files([generated_dn_1, generated_dn_2])
+        assert not file_exists(generated_dn_1.path)
+        assert not file_exists(generated_dn_2.path)
+
+    @pytest.mark.parametrize(
+        "storage_type,path",
+        [
+            ("pickle", "pickle_file_path"),
+            ("csv", "csv_file"),
+            ("excel", "excel_file"),
+            ("json", "json_file"),
+            ("parquet", "parquet_file_path"),
+        ],
+    )
+    def test_delete_does_clean_generated_pickle_files(self, storage_type, path, request):
+        path = request.getfixturevalue(path)
+        user_dn_config = Config.configure_data_node(
+            id="d1", storage_type=storage_type, path=path, default_data={"a": [1], "b": [2]}
         )
-        generated_pickle_dn_config_1 = Config.configure_data_node(id="d2", storage_type="pickle", default_data="d")
-        generated_pickle_dn_config_2 = Config.configure_data_node(id="d3", storage_type="pickle", default_data="d")
-        generated_pickle_dn_config_3 = Config.configure_data_node(id="d4", storage_type="pickle", default_data="d")
+        generated_dn_config_1 = Config.configure_data_node(
+            id="d2", storage_type=storage_type, default_data={"a": [1], "b": [2]}
+        )
+        generated_dn_config_2 = Config.configure_data_node(
+            id="d3", storage_type=storage_type, default_data={"a": [1], "b": [2]}
+        )
+        generated_dn_config_3 = Config.configure_data_node(
+            id="d4", storage_type=storage_type, default_data={"a": [1], "b": [2]}
+        )
 
         dns = _DataManager._bulk_get_or_create(
             [
-                user_pickle_dn_config,
-                generated_pickle_dn_config_1,
-                generated_pickle_dn_config_2,
-                generated_pickle_dn_config_3,
+                user_dn_config,
+                generated_dn_config_1,
+                generated_dn_config_2,
+                generated_dn_config_3,
             ]
         )
 
-        user_pickle_dn = dns[user_pickle_dn_config]
-        generated_pickle_dn_1 = dns[generated_pickle_dn_config_1]
-        generated_pickle_dn_2 = dns[generated_pickle_dn_config_2]
-        generated_pickle_dn_3 = dns[generated_pickle_dn_config_3]
+        user_dn = dns[user_dn_config]
+        generated_dn_1 = dns[generated_dn_config_1]
+        generated_dn_2 = dns[generated_dn_config_2]
+        generated_dn_3 = dns[generated_dn_config_3]
 
-        _DataManager._delete(user_pickle_dn.id)
-        assert file_exists(user_pickle_dn.path)
+        _DataManager._delete(user_dn.id)
+        assert file_exists(user_dn.path)
 
-        _DataManager._delete_many([generated_pickle_dn_1.id, generated_pickle_dn_2.id])
-        assert not file_exists(generated_pickle_dn_1.path)
-        assert not file_exists(generated_pickle_dn_2.path)
+        _DataManager._delete_many([generated_dn_1.id, generated_dn_2.id])
+        assert not file_exists(generated_dn_1.path)
+        assert not file_exists(generated_dn_2.path)
 
         _DataManager._delete_all()
-        assert not file_exists(generated_pickle_dn_3.path)
+        assert not file_exists(generated_dn_3.path)
 
     def test_create_dn_from_loaded_config_no_scope(self):
         file_config = NamedTemporaryFile(
@@ -665,3 +731,20 @@ class TestDataManager:
 
         assert len(_DataManager._get_by_config_id(dn_config_1.id)) == 3
         assert len(_DataManager._get_by_config_id(dn_config_2.id)) == 2
+
+    def test_can_duplicate(self):
+        dn_config = Config.configure_data_node("dn_1")
+        dn = _DataManager._create_and_set(dn_config, None, None)
+
+        reasons = _DataManager._can_duplicate(dn.id)
+        assert bool(reasons)
+        assert reasons._reasons == {}
+
+        reasons = _DataManager._can_duplicate(dn)
+        assert bool(reasons)
+        assert reasons._reasons == {}
+
+        reasons = _DataManager._can_duplicate("1")
+        assert not bool(reasons)
+        assert reasons._reasons["1"] == {EntityDoesNotExist("1")}
+        assert str(list(reasons._reasons["1"])[0]) == "Entity '1' does not exist in the repository"

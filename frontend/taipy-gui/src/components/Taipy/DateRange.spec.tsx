@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -17,7 +17,7 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 
 import { LocalizationProvider } from "@mui/x-date-pickers";
-import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFnsV3";
 
 import DateRange from "./DateRange";
 import { TaipyContext } from "../../context/taipyContext";
@@ -81,6 +81,16 @@ describe("DateRange Component", () => {
         expect(elts).toHaveLength(2);
         expect(elts[0].parentElement?.tagName).toBe("BUTTON");
     });
+    it("renders with analog time picker", async () => {
+        const { getAllByTestId } = render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateRange dates={curDates} withTime={true} analogic={true}/>
+            </LocalizationProvider>
+        );
+        const elts = getAllByTestId("CalendarIcon");
+        expect(elts).toHaveLength(2);
+        expect(elts[0].parentElement?.tagName).toBe("BUTTON");
+    });
     it("displays the right info for string", async () => {
         const { getAllByTestId } = render(
             <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -121,6 +131,24 @@ describe("DateRange Component", () => {
         expect(input2).toBeInTheDocument();
         expect(cleanText(input2?.value || "")).toEqual("01/31/2001");
     });
+    it("displays the default value with format", async () => {
+        render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateRange
+                    defaultDates={defaultDates}
+                    dates={undefined as unknown as string[]}
+                    className="taipy-date-range"
+                    format="dd-MM-yyyy"
+                />
+            </LocalizationProvider>
+        );
+        const input = document.querySelector(".taipy-date-range-picker-start input") as HTMLInputElement;
+        expect(input).toBeInTheDocument();
+        expect(cleanText(input?.value || "")).toEqual("01-01-2001");
+        const input2 = document.querySelector(".taipy-date-range-picker-end input") as HTMLInputElement;
+        expect(input2).toBeInTheDocument();
+        expect(cleanText(input2?.value || "")).toEqual("31-01-2001");
+    });
     it("shows labels", async () => {
         const { getByLabelText } = render(
             <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -137,6 +165,24 @@ describe("DateRange Component", () => {
         expect(startInput.value).toBe("01/01/2001");
         const endInput = getByLabelText("end") as HTMLInputElement;
         expect(endInput.value).toBe("01/31/2001");
+    });
+    it("displays with width=70%", async () => {
+        render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateRange dates={curDates} width="70%" />
+            </LocalizationProvider>
+        );
+        const elt = document.querySelector(".MuiStack-root");
+        expect(elt).toHaveStyle("width: 70%");
+    });
+    it("displays with width=500", async () => {
+        render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateRange dates={curDates} width={500} />
+            </LocalizationProvider>
+        );
+        const elt = document.querySelector(".MuiStack-root");
+        expect(elt).toHaveStyle("width: 500px");
     });
     it("is disabled", async () => {
         render(
@@ -238,7 +284,7 @@ describe("DateRange with time Component", () => {
         render(
             <LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DateRange
-                    defaultDates="[&quot;2001-01-01T00:00:01.001Z&quot;,&quot;2001-01-31T00:00:01.001Z&quot;]"
+                    defaultDates='["2001-01-01T00:00:01.001Z","2001-01-31T00:00:01.001Z"]'
                     withTime={true}
                     dates={undefined as unknown as string[]}
                     className="tp-dt"
@@ -252,11 +298,30 @@ describe("DateRange with time Component", () => {
         expect(input2).toBeInTheDocument();
         expect(cleanText(input2?.value || "").toLocaleLowerCase()).toEqual("01/31/2001 12:00 am");
     });
+    it("displays the default value with format", async () => {
+        render(
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateRange
+                    defaultDates='["2001-01-01T00:10:01.001Z","2001-01-31T00:11:01.001Z"]'
+                    withTime={true}
+                    dates={undefined as unknown as string[]}
+                    className="tp-dt"
+                    format="dd-MM-yyyy mm"
+                />
+            </LocalizationProvider>
+        );
+        const input = document.querySelector(".tp-dt-picker-start input") as HTMLInputElement;
+        expect(input).toBeInTheDocument();
+        expect(cleanText(input?.value || "").toLocaleLowerCase()).toEqual("01-01-2001 10");
+        const input2 = document.querySelector(".tp-dt-picker-end input") as HTMLInputElement;
+        expect(input2).toBeInTheDocument();
+        expect(cleanText(input2?.value || "").toLocaleLowerCase()).toEqual("31-01-2001 11");
+    });
     it("shows labels", async () => {
         const { getByLabelText } = render(
             <LocalizationProvider dateAdapter={AdapterDateFns}>
                 <DateRange
-                    defaultDates="[&quot;2001-01-01T00:00:01.001Z&quot;,&quot;2001-01-31T00:00:01.001Z&quot;]"
+                    defaultDates='["2001-01-01T00:00:01.001Z","2001-01-31T00:00:01.001Z"]'
                     dates={undefined as unknown as string[]}
                     withTime={true}
                     className="taipy-date-range"

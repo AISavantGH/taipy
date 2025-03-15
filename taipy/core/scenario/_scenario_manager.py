@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,11 +9,11 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-import datetime
+from datetime import datetime
 from functools import partial
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union
 
-from taipy.config import Config
+from taipy.common.config import Config
 
 from .._entity._entity_ids import _EntityIds
 from .._manager._manager import _Manager
@@ -29,8 +29,7 @@ from ..exceptions.exceptions import (
     DifferentScenarioConfigs,
     DoesNotBelongToACycle,
     InsufficientScenarioToCompare,
-    InvalidSequence,
-    InvalidSscenario,
+    InvalidScenario,
     NonExistingComparator,
     NonExistingScenario,
     NonExistingScenarioConfig,
@@ -40,9 +39,19 @@ from ..exceptions.exceptions import (
 from ..job._job_manager_factory import _JobManagerFactory
 from ..job.job import Job
 from ..notification import EventEntityType, EventOperation, Notifier, _make_event
+from ..reason import (
+    EntityDoesNotExist,
+    EntityIsNotAScenario,
+    EntityIsNotSubmittableEntity,
+    ReasonCollection,
+    ScenarioDoesNotBelongToACycle,
+    ScenarioIsThePrimaryScenario,
+    WrongConfigType,
+)
 from ..submission._submission_manager_factory import _SubmissionManagerFactory
 from ..submission.submission import Submission
 from ..task._task_manager_factory import _TaskManagerFactory
+from ._scenario_duplicator import _ScenarioDuplicator
 from .scenario import Scenario
 from .scenario_id import ScenarioId
 
@@ -68,7 +77,7 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         callback: Callable[[Scenario, Job], None],
         params: Optional[List[Any]] = None,
         scenario: Optional[Scenario] = None,
-    ):
+    ) -> None:
         if scenario is None:
             scenarios = cls._get_all()
             for scn in scenarios:
@@ -83,7 +92,7 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         callback: Callable[[Scenario, Job], None],
         params: Optional[List[Any]] = None,
         scenario: Optional[Scenario] = None,
-    ):
+    ) -> None:
         if scenario is None:
             scenarios = cls._get_all()
             for scn in scenarios:
@@ -93,24 +102,34 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         cls.__remove_subscriber(callback, params, scenario)
 
     @classmethod
-    def __add_subscriber(cls, callback, params, scenario: Scenario):
+    def __add_subscriber(cls, callback, params, scenario: Scenario) -> None:
         scenario._add_subscriber(callback, params)
         Notifier.publish(
             _make_event(scenario, EventOperation.UPDATE, attribute_name="subscribers", attribute_value=params)
         )
 
     @classmethod
-    def __remove_subscriber(cls, callback, params, scenario: Scenario):
+    def __remove_subscriber(cls, callback, params, scenario: Scenario) -> None:
         scenario._remove_subscriber(callback, params)
         Notifier.publish(
             _make_event(scenario, EventOperation.UPDATE, attribute_name="subscribers", attribute_value=params)
         )
 
     @classmethod
+    def _can_create(cls, config: Optional[ScenarioConfig] = None) -> ReasonCollection:
+        config_id = getattr(config, "id", None) or str(config)
+        reason_collector = ReasonCollection()
+
+        if config is not None and not isinstance(config, ScenarioConfig):
+            reason_collector._add_reason(config_id, WrongConfigType(config_id, ScenarioConfig.__name__))
+
+        return reason_collector
+
+    @classmethod
     def _create(
         cls,
         config: ScenarioConfig,
-        creation_date: Optional[datetime.datetime] = None,
+        creation_date: Optional[datetime] = None,
         name: Optional[str] = None,
     ) -> Scenario:
         _task_manager = _TaskManagerFactory._build_manager()
@@ -180,22 +199,32 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         cls._set(scenario)
 
         if not scenario._is_consistent():
-            raise InvalidSscenario(scenario.id)
+            raise InvalidScenario(scenario.id)
 
-        actual_sequences = scenario._get_sequences()
-        for sequence_name in sequences.keys():
-            if not actual_sequences[sequence_name]._is_consistent():
-                raise InvalidSequence(actual_sequences[sequence_name].id)
-            Notifier.publish(_make_event(actual_sequences[sequence_name], EventOperation.CREATION))
+        from ..sequence._sequence_manager_factory import _SequenceManagerFactory
+
+        _SequenceManagerFactory._build_manager()._bulk_create_from_scenario(scenario)
 
         Notifier.publish(_make_event(scenario, EventOperation.CREATION))
         return scenario
 
     @classmethod
-    def _is_submittable(cls, scenario: Union[Scenario, ScenarioId]) -> bool:
+    def _is_submittable(cls, scenario: Union[Scenario, ScenarioId]) -> ReasonCollection:
+        reason_collector = ReasonCollection()
+
         if isinstance(scenario, str):
+            scenario_id = scenario
             scenario = cls._get(scenario)
-        return isinstance(scenario, Scenario) and scenario.is_ready_to_run()
+            if scenario is None:
+                reason_collector._add_reason(scenario_id, EntityDoesNotExist(scenario_id))
+                return reason_collector
+
+        if not isinstance(scenario, Scenario):
+            reason_collector._add_reason(str(scenario), EntityIsNotSubmittableEntity(str(scenario)))
+        else:
+            return scenario.is_ready_to_run()
+
+        return reason_collector
 
     @classmethod
     def _submit(
@@ -204,13 +233,14 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         callbacks: Optional[List[Callable]] = None,
         force: bool = False,
         wait: bool = False,
-        timeout: Optional[Union[float, int]] = None,
+        timeout: Union[float, int, None] = None,
         check_inputs_are_ready: bool = True,
         **properties,
     ) -> Submission:
         scenario_id = scenario.id if isinstance(scenario, Scenario) else scenario
-        scenario = cls._get(scenario_id)
-        if scenario is None:
+        if not isinstance(scenario, Scenario):
+            scenario = cls._get(scenario_id)
+        if scenario is None or not cls._exists(scenario_id):
             raise NonExistingScenario(scenario_id)
         callbacks = callbacks or []
         scenario_subscription_callback = cls.__get_status_notifier_callbacks(scenario) + callbacks
@@ -245,12 +275,9 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         return None
 
     @classmethod
-    def _get_by_tag(cls, cycle: Cycle, tag: str) -> Optional[Scenario]:
-        scenarios = cls._get_all_by_cycle(cycle)
-        for scenario in scenarios:
-            if scenario.has_tag(tag):
-                return scenario
-        return None
+    def _get_all_by_cycle_tag(cls, cycle: Cycle, tag: str) -> List[Scenario]:
+        cycles_scenarios = cls._get_all_by_cycle(cycle)
+        return [scenario for scenario in cycles_scenarios if scenario.has_tag(tag)]
 
     @classmethod
     def _get_all_by_tag(cls, tag: str) -> List[Scenario]:
@@ -270,16 +297,73 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
     def _get_primary_scenarios(cls) -> List[Scenario]:
         return [scenario for scenario in cls._get_all() if scenario.is_primary]
 
-    @classmethod
-    def _is_promotable_to_primary(cls, scenario: Union[Scenario, ScenarioId]) -> bool:
-        if isinstance(scenario, str):
-            scenario = cls._get(scenario)
-        if scenario and not scenario.is_primary and scenario.cycle:
-            return True
-        return False
+    @staticmethod
+    def _sort_scenarios(
+        scenarios: List[Scenario],
+        descending: bool = False,
+        sort_key: Literal["name", "id", "config_id", "creation_date", "tags"] = "name",
+    ) -> List[Scenario]:
+        if sort_key in ["name", "config_id", "creation_date", "tags"]:
+            if sort_key == "tags":
+                scenarios.sort(key=lambda x: (tuple(sorted(x.tags)), x.id), reverse=descending)
+            else:
+                scenarios.sort(key=lambda x: (getattr(x, sort_key), x.id), reverse=descending)
+        elif sort_key == "id":
+            scenarios.sort(key=lambda x: x.id, reverse=descending)
+        else:
+            scenarios.sort(key=lambda x: (x.name, x.id), reverse=descending)
+        return scenarios
+
+    @staticmethod
+    def _filter_by_creation_time(
+        scenarios: List[Scenario],
+        created_start_time: Optional[datetime] = None,
+        created_end_time: Optional[datetime] = None,
+    ) -> List[Scenario]:
+        """
+        Filter a list of scenarios by a given creation time period.
+
+        Arguments:
+            created_start_time (Optional[datetime]): Start time of the period. The start time is inclusive.
+            created_end_time (Optional[datetime]): End time of the period. The end time is exclusive.
+
+        Returns:
+            List[Scenario]: List of scenarios created in the given time period.
+        """
+        if not created_start_time and not created_end_time:
+            return scenarios
+
+        if not created_start_time:
+            return [scenario for scenario in scenarios if scenario.creation_date < created_end_time]
+
+        if not created_end_time:
+            return [scenario for scenario in scenarios if created_start_time <= scenario.creation_date]
+
+        return [scenario for scenario in scenarios if created_start_time <= scenario.creation_date < created_end_time]
 
     @classmethod
-    def _set_primary(cls, scenario: Scenario):
+    def _is_promotable_to_primary(cls, scenario: Union[Scenario, ScenarioId]) -> ReasonCollection:
+        reason_collection = ReasonCollection()
+
+        if isinstance(scenario, str):
+            scenario_id = scenario
+            scenario = cls._get(scenario_id)
+        else:
+            scenario_id = scenario.id
+
+        if not scenario:
+            reason_collection._add_reason(scenario_id, EntityDoesNotExist(scenario_id))
+        else:
+            if scenario.is_primary:
+                reason_collection._add_reason(scenario_id, ScenarioIsThePrimaryScenario(scenario_id, scenario.cycle.id))
+
+            if not scenario.cycle:
+                reason_collection._add_reason(scenario_id, ScenarioDoesNotBelongToACycle(scenario_id))
+
+        return reason_collection
+
+    @classmethod
+    def _set_primary(cls, scenario: Scenario) -> None:
         if not scenario.cycle:
             raise DoesNotBelongToACycle(
                 f"Can't set scenario {scenario.id} to primary because it doesn't belong to a cycle."
@@ -292,14 +376,10 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         scenario.is_primary = True  # type: ignore
 
     @classmethod
-    def _tag(cls, scenario: Scenario, tag: str):
+    def _tag(cls, scenario: Scenario, tag: str) -> None:
         tags = scenario.properties.get(cls._AUTHORIZED_TAGS_KEY, set())
         if len(tags) > 0 and tag not in tags:
             raise UnauthorizedTagError(f"Tag `{tag}` not authorized by scenario configuration `{scenario.config_id}`")
-        if scenario.cycle:
-            if old_tagged_scenario := cls._get_by_tag(scenario.cycle, tag):
-                old_tagged_scenario.remove_tag(tag)
-                cls._set(old_tagged_scenario)
         scenario._add_tag(tag)
         cls._set(scenario)
         Notifier.publish(
@@ -307,7 +387,7 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         )
 
     @classmethod
-    def _untag(cls, scenario: Scenario, tag: str):
+    def _untag(cls, scenario: Scenario, tag: str) -> None:
         scenario._remove_tag(tag)
         cls._set(scenario)
         Notifier.publish(
@@ -315,14 +395,14 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         )
 
     @classmethod
-    def _compare(cls, *scenarios: Scenario, data_node_config_id: Optional[str] = None):
+    def _compare(cls, *scenarios: Scenario, data_node_config_id: Optional[str] = None) -> Dict:
         if len(scenarios) < 2:
             raise InsufficientScenarioToCompare("At least two scenarios are required to compare.")
 
         if not all(scenarios[0].config_id == scenario.config_id for scenario in scenarios):
             raise DifferentScenarioConfigs("Scenarios to compare must have the same configuration.")
 
-        if scenario_config := _ScenarioManager.__get_config(scenarios[0]):
+        if scenario_config := cls.__get_config(scenarios[0]):
             results = {}
             if data_node_config_id:
                 if data_node_config_id in scenario_config.comparators.keys():
@@ -348,16 +428,26 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         return Config.scenarios.get(scenario.config_id, None)
 
     @classmethod
-    def _is_deletable(cls, scenario: Union[Scenario, ScenarioId]) -> bool:
+    def _is_deletable(cls, scenario: Union[Scenario, ScenarioId]) -> ReasonCollection:
+        reason_collection = ReasonCollection()
+
         if isinstance(scenario, str):
+            scenario_id = scenario
             scenario = cls._get(scenario)
-        if scenario.is_primary:
+            if scenario is None:
+                reason_collection._add_reason(scenario_id, EntityDoesNotExist(scenario_id))
+                return reason_collection
+
+        if not isinstance(scenario, Scenario):
+            reason_collection._add_reason(str(scenario), EntityIsNotAScenario(str(scenario)))
+        elif scenario.is_primary:
             if len(cls._get_all_by_cycle(scenario.cycle)) > 1:
-                return False
-        return True
+                reason_collection._add_reason(scenario.id, ScenarioIsThePrimaryScenario(scenario.id, scenario.cycle.id))
+
+        return reason_collection
 
     @classmethod
-    def _delete(cls, scenario_id: ScenarioId):
+    def _delete(cls, scenario_id: ScenarioId) -> None:
         scenario = cls._get(scenario_id)
         if not cls._is_deletable(scenario):
             raise DeletingPrimaryScenario(
@@ -369,7 +459,7 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         super()._delete(scenario_id)
 
     @classmethod
-    def _hard_delete(cls, scenario_id: ScenarioId):
+    def _hard_delete(cls, scenario_id: ScenarioId) -> None:
         scenario = cls._get(scenario_id)
         if not cls._is_deletable(scenario):
             raise DeletingPrimaryScenario(
@@ -384,7 +474,7 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
             cls._delete_entities_of_multiple_types(entity_ids_to_delete)
 
     @classmethod
-    def _delete_by_version(cls, version_number: str):
+    def _delete_by_version(cls, version_number: str) -> None:
         """
         Deletes scenario by the version number.
 
@@ -416,7 +506,7 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         submissions = _SubmissionManagerFactory._build_manager()._get_all()
         submitted_entity_ids = list(entity_ids.scenario_ids.union(entity_ids.sequence_ids, entity_ids.task_ids))
         for submission in submissions:
-            if submission.entity_id in submitted_entity_ids:
+            if submission.entity_id in submitted_entity_ids or submission.entity_id == scenario.id:
                 entity_ids.submission_ids.add(submission.id)
 
         return entity_ids
@@ -432,3 +522,44 @@ class _ScenarioManager(_Manager[Scenario], _VersionMixin):
         for fil in filters:
             fil.update({"config_id": config_id})
         return cls._repository._load_all(filters)
+
+    @classmethod
+    def _duplicate(
+        cls,
+        scenario: Scenario,
+        new_creation_date: Optional[datetime] = None,
+        new_name: Optional[str] = None,
+        data_to_duplicate: Union[bool, Set[str]] = True
+    ) -> Scenario:
+        """Create a duplicated scenario with its related entities.
+
+        Duplicate a scenario, publish a creation event and return the newly created
+        scenario.
+
+        Arguments:
+            scenario (Scenario): The scenario to duplicate.
+            new_creation_date (Optional[datetime]): The creation date of the new scenario.
+                If not provided, the current date and time is used.
+            new_name (Optional[str]): The name of the new scenario. If not provided, the
+                name of the original scenario is used.
+            data_to_duplicate (Union[Set[str], bool]): A set of data node configuration ids used
+                to duplicate only the data nodes' data with the specified configuration ids.
+                If True, all data nodes are duplicated. If False, no data nodes are duplicated.
+        Returns:
+            The newly created scenario.
+        """
+        reasons = cls._can_duplicate(scenario)
+        if not reasons:
+            raise Exception(reasons.reasons)
+        return _ScenarioDuplicator(scenario, data_to_duplicate).duplicate(new_creation_date, new_name)
+
+    @classmethod
+    def _can_duplicate(cls, scenario: Union[str, Scenario]) -> ReasonCollection:
+        reason_collector = ReasonCollection()
+        if isinstance(scenario, Scenario):
+            scenario_id = scenario.id
+        else:
+            scenario_id = str(scenario)  # type: ignore
+        if not cls._repository._exists(scenario_id):
+            reason_collector._add_reason(scenario_id, EntityDoesNotExist(scenario_id))
+        return reason_collector

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -16,7 +16,7 @@ import pandas as pd
 from flask import request
 from flask_restful import Resource
 
-from taipy.config.config import Config
+from taipy.common.config import Config
 from taipy.core import DataNode
 from taipy.core.data._data_manager_factory import _DataManagerFactory
 from taipy.core.data.operator import Operator
@@ -97,7 +97,6 @@ class DataNodeResource(Resource):
                     "last_edit_date": "2022-08-10T16:03:40.855082",
                     "job_ids": [],
                     "version": "latest",
-                    "cacheable": false,
                     "validity_days": null,
                     "validity_seconds": null,
                     "edit_in_progress": false,
@@ -116,10 +115,11 @@ class DataNodeResource(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.get(
-                    "http://localhost:5000/api/v1/datanodes/DATANODE_historical_data_set_9db1b542-2e45-44e7-8a85-03ef9ead173d")
-                    print(response)
-                    print(response.json())
+                response = requests.get(
+                    "http://localhost:5000/api/v1/datanodes/DATANODE_historical_data_set_9db1b542-2e45-44e7-8a85-03ef9ead173d"
+                )
+                print(response)
+                print(response.json())
                 ```
                 `DATANODE_hist_cfg_75750ed8-4e09-4e00-958d-e352ee426cc9` is the value of the *datanode_id* parameter. It
                 represents the identifier of the data node we want to retrieve.
@@ -137,7 +137,6 @@ class DataNodeResource(Resource):
                     "last_edit_date": "2022-08-10T16:03:40.855082",
                     "job_ids": [],
                     "version": "latest",
-                    "cacheable": false,
                     "validity_days": null,
                     "validity_seconds": null,
                     "edit_in_progress": false,
@@ -158,7 +157,7 @@ class DataNodeResource(Resource):
           When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_READER` role.
 
-      parameters:
+      arguments:
         - in: path
           name: datanode_id
           schema:
@@ -210,10 +209,11 @@ class DataNodeResource(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.delete(
-                    "http://localhost:5000/api/v1/datanodes/DATANODE_historical_data_set_9db1b542-2e45-44e7-8a85-03ef9ead173d")
-                    print(response)
-                    print(response.json())
+                response = requests.delete(
+                    "http://localhost:5000/api/v1/datanodes/DATANODE_historical_data_set_9db1b542-2e45-44e7-8a85-03ef9ead173d"
+                )
+                print(response)
+                print(response.json())
                 ```
                 `DATANODE_historical_data_set_9db1b542-2e45-44e7-8a85-03ef9ead173d` is the value of the
                 *datanode_id* parameter. It represents the identifier of the Cycle we want to delete.
@@ -235,7 +235,7 @@ class DataNodeResource(Resource):
             When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_EDITOR` role.
 
-      parameters:
+      arguments:
         - in: path
           name: datanode_id
           schema:
@@ -304,7 +304,6 @@ class DataNodeList(Resource):
                         "last_edit_date": "2022-08-10T16:03:40.855082",
                         "job_ids": [],
                         "version": "latest",
-                        "cacheable": false,
                         "validity_days": null,
                         "validity_seconds": null,
                         "edit_in_progress": false,
@@ -324,9 +323,9 @@ class DataNodeList(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.get("http://localhost:5000/api/v1/datanodes")
-                    print(response)
-                    print(response.json())
+                response = requests.get("http://localhost:5000/api/v1/datanodes")
+                print(response)
+                print(response.json())
                 ```
 
                 In case of success here is an output example:
@@ -343,7 +342,6 @@ class DataNodeList(Resource):
                         "last_edit_date": "2022-08-10T16:03:40.855082",
                         "job_ids": [],
                         "version": "latest",
-                        "cacheable": false,
                         "validity_days": null,
                         "validity_seconds": null,
                         "edit_in_progress": false,
@@ -411,9 +409,9 @@ class DataNodeList(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.post("http://localhost:5000/api/v1/datanodes?config_id=historical_data_set")
-                    print(response)
-                    print(response.json())
+                response = requests.post("http://localhost:5000/api/v1/datanodes?config_id=historical_data_set")
+                print(response)
+                print(response.json())
                 ```
                 In this example the *config_id* value ("historical_data_set") is given as parameter directly in the
                 url. A corresponding `DataNodeConfig^` must exist and must have been configured before.
@@ -435,7 +433,7 @@ class DataNodeList(Resource):
             When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_EDITOR` role.
 
-      parameters:
+      arguments:
         - in: query
           name: config_id
           schema:
@@ -527,10 +525,10 @@ class DataNodeReader(Resource):
                 This Python example requires the 'requests' package to be installed (`pip install requests`).
                 ```python
                 import requests
-                    response = requests.get(
-                    "http://localhost:5000/api/v1/datanodes/DATANODE_historical_data_set_9db1b542-2e45-44e7-8a85-03ef9ead173d/read")
-                    print(response)
-                    print(response.json())
+                response = requests.get(
+                "http://localhost:5000/api/v1/datanodes/DATANODE_historical_data_set_9db1b542-2e45-44e7-8a85-03ef9ead173d/read")
+                print(response)
+                print(response.json())
                 ```
                 `DATANODE_historical_data_set_9db1b542-2e45-44e7-8a85-03ef9ead173d` is the *datanode_id*
                 parameter. It represents the identifier of the data node to read.
@@ -551,7 +549,7 @@ class DataNodeReader(Resource):
             When the authorization feature is activated (available in Taipy Enterprise edition only), this endpoint
             requires the `TAIPY_READER` role.
 
-      parameters:
+      arguments:
         - in: path
           name: datanode_id
           schema:
@@ -627,7 +625,7 @@ class DataNodeWriter(Resource):
            http://localhost:5000/api/v1/datanodes/DATANODE_my_config_75750ed8-4e09-4e00-958d-e352ee426cc9/write
         ```
 
-      parameters:
+      arguments:
         - in: path
           name: datanode_id
           schema:

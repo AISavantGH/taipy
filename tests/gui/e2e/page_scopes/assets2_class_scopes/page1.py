@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -13,7 +13,7 @@ from taipy.gui import Markdown, Page
 
 
 class Page1(Page):
-    def __init__(self):
+    def __init__(self) -> None:
         self.operand_2 = 0
         super().__init__()
 

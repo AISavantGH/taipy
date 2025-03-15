@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,15 +9,11 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-import pathlib
-import shutil
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Union, overload
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Union, overload
 
-from taipy.config.common.scope import Scope
-from taipy.logger._taipy_logger import _TaipyLogger
+from taipy.common.logger._taipy_logger import _TaipyLogger
 
-from ._core import Core
 from ._entity._entity import _Entity
 from ._version._version_manager_factory import _VersionManagerFactory
 from .common._check_instance import (
@@ -29,7 +25,8 @@ from .common._check_instance import (
     _is_submission,
     _is_task,
 )
-from .common._warnings import _warn_deprecated, _warn_no_core_service
+from .common._warnings import _warn_no_orchestrator_service
+from .common.scope import Scope
 from .config.data_node_config import DataNodeConfig
 from .config.scenario_config import ScenarioConfig
 from .cycle._cycle_manager_factory import _CycleManagerFactory
@@ -38,15 +35,12 @@ from .cycle.cycle_id import CycleId
 from .data._data_manager_factory import _DataManagerFactory
 from .data.data_node import DataNode
 from .data.data_node_id import DataNodeId
-from .exceptions.exceptions import (
-    DataNodeConfigIsNotGlobal,
-    ModelNotFound,
-    NonExistingVersion,
-    VersionIsNotProductionVersion,
-)
+from .exceptions.exceptions import DataNodeConfigIsNotGlobal, ModelNotFound, NonExistingVersion
 from .job._job_manager_factory import _JobManagerFactory
 from .job.job import Job
 from .job.job_id import JobId
+from .orchestrator import Orchestrator
+from .reason import EntityDoesNotExist, EntityIsNotSubmittableEntity, ReasonCollection
 from .scenario._scenario_manager_factory import _ScenarioManagerFactory
 from .scenario.scenario import Scenario
 from .scenario.scenario_id import ScenarioId
@@ -62,12 +56,12 @@ from .task.task_id import TaskId
 __logger = _TaipyLogger._get_logger()
 
 
-def set(entity: Union[DataNode, Task, Sequence, Scenario, Cycle]):
+def set(entity: Union[DataNode, Task, Sequence, Scenario, Cycle, Submission]):
     """Save or update an entity.
 
     This function allows you to save or update an entity in Taipy.
 
-    Parameters:
+    Arguments:
         entity (Union[DataNode^, Task^, Sequence^, Scenario^, Cycle^, Submission^]): The
             entity to save or update.
     """
@@ -85,7 +79,7 @@ def set(entity: Union[DataNode, Task, Sequence, Scenario, Cycle]):
         return _SubmissionManagerFactory._build_manager()._set(entity)
 
 
-def is_submittable(entity: Union[Scenario, ScenarioId, Sequence, SequenceId, Task, TaskId, str]) -> bool:
+def is_submittable(entity: Union[Scenario, ScenarioId, Sequence, SequenceId, Task, TaskId, str]) -> ReasonCollection:
     """Indicate if an entity can be submitted.
 
     This function checks if the given entity can be submitted for execution.
@@ -105,7 +99,7 @@ def is_submittable(entity: Union[Scenario, ScenarioId, Sequence, SequenceId, Tas
         return _TaskManagerFactory._build_manager()._is_submittable(entity)
     if isinstance(entity, str) and entity.startswith(Task._ID_PREFIX):
         return _TaskManagerFactory._build_manager()._is_submittable(TaskId(entity))
-    return False
+    return ReasonCollection()._add_reason(str(entity), EntityIsNotSubmittableEntity(str(entity)))
 
 
 def is_editable(
@@ -125,13 +119,14 @@ def is_editable(
         CycleId,
         SubmissionId,
     ],
-) -> bool:
+) -> ReasonCollection:
     """Indicate if an entity can be edited.
 
     This function checks if the given entity can be edited.
 
     Returns:
-        True if the given entity can be edited. False otherwise.
+        A ReasonCollection object that can function as a Boolean value,
+        which is True if the given entity can be edited. False otherwise.
     """
     if isinstance(entity, Cycle):
         return _CycleManagerFactory._build_manager()._is_editable(entity)
@@ -161,7 +156,7 @@ def is_editable(
         return _SubmissionManagerFactory._build_manager()._is_editable(entity)
     if isinstance(entity, str) and entity.startswith(Submission._ID_PREFIX):
         return _SubmissionManagerFactory._build_manager()._is_editable(SequenceId(entity))
-    return False
+    return ReasonCollection()._add_reason(str(entity), EntityDoesNotExist(str(entity)))
 
 
 def is_readable(
@@ -181,13 +176,14 @@ def is_readable(
         CycleId,
         SubmissionId,
     ],
-) -> bool:
+) -> ReasonCollection:
     """Indicate if an entity can be read.
 
     This function checks if the given entity can be read.
 
     Returns:
-        True if the given entity can be read. False otherwise.
+        A ReasonCollection object that can function as a Boolean value,
+        which is True if the given entity can be read. False otherwise.
     """
     if isinstance(entity, Cycle):
         return _CycleManagerFactory._build_manager()._is_readable(entity)
@@ -217,15 +213,15 @@ def is_readable(
         return _SubmissionManagerFactory._build_manager()._is_readable(entity)
     if isinstance(entity, str) and entity.startswith(Submission._ID_PREFIX):
         return _SubmissionManagerFactory._build_manager()._is_readable(SequenceId(entity))
-    return False
+    return ReasonCollection()._add_reason(str(entity), EntityDoesNotExist(str(entity)))
 
 
-@_warn_no_core_service("The submitted entity will not be executed until the Core service is running.")
+@_warn_no_orchestrator_service("The submitted entity will not be executed until the Orchestrator service is running.")
 def submit(
     entity: Union[Scenario, Sequence, Task],
     force: bool = False,
     wait: bool = False,
-    timeout: Optional[Union[float, int]] = None,
+    timeout: Union[float, int, None] = None,
     **properties,
 ) -> Submission:
     """Submit a scenario, sequence or task entity for execution.
@@ -235,14 +231,15 @@ def submit(
     If the entity is a sequence or a scenario, all the tasks of the entity are
     submitted for execution.
 
-    Parameters:
+    Arguments:
         entity (Union[Scenario^, Sequence^, Task^]): The scenario, sequence or task to submit.
         force (bool): If True, the execution is forced even if for skippable tasks.
         wait (bool): Wait for the orchestrated jobs created from the submission to be finished
             in asynchronous mode.
         timeout (Union[float, int]): The optional maximum number of seconds to wait
-            for the jobs to be finished before returning.
-        **properties (dict[str, any]): A keyworded variable length list of user additional arguments
+            for the jobs to be finished before returning.<br/>
+            If not provided and *wait* is True, the function waits indefinitely.
+        **properties (dict[str, any]): A key-worded variable length list of user additional arguments
             that will be stored within the `Submission^`. It can be accessed via `Submission.properties^`.
 
     Returns:
@@ -264,59 +261,54 @@ def submit(
 
 
 @overload
-def exists(entity_id: TaskId) -> bool:
-    ...
+def exists(entity_id: TaskId) -> ReasonCollection: ...
 
 
 @overload
-def exists(entity_id: DataNodeId) -> bool:
-    ...
+def exists(entity_id: DataNodeId) -> ReasonCollection: ...
 
 
 @overload
-def exists(entity_id: SequenceId) -> bool:
-    ...
+def exists(entity_id: SequenceId) -> ReasonCollection: ...
 
 
 @overload
-def exists(entity_id: ScenarioId) -> bool:
-    ...
+def exists(entity_id: ScenarioId) -> ReasonCollection: ...
 
 
 @overload
-def exists(entity_id: CycleId) -> bool:
-    ...
+def exists(entity_id: CycleId) -> ReasonCollection: ...
 
 
 @overload
-def exists(entity_id: JobId) -> bool:
-    ...
+def exists(entity_id: JobId) -> ReasonCollection: ...
 
 
 @overload
-def exists(entity_id: SubmissionId) -> bool:
-    ...
+def exists(entity_id: SubmissionId) -> ReasonCollection: ...
 
 
 @overload
-def exists(entity_id: str) -> bool:
-    ...
+def exists(entity_id: str) -> ReasonCollection: ...
 
 
-def exists(entity_id: Union[TaskId, DataNodeId, SequenceId, ScenarioId, JobId, CycleId, SubmissionId, str]) -> bool:
+def exists(
+    entity_id: Union[TaskId, DataNodeId, SequenceId, ScenarioId, JobId, CycleId, SubmissionId, str],
+) -> ReasonCollection:
     """Check if an entity with the specified identifier exists.
 
     This function checks if an entity with the given identifier exists.
-    It supports various types of entity identifiers, including `TaskId^`,
-    `DataNodeId^`, `SequenceId^`, `ScenarioId^`, `JobId^`, `CycleId^`, `SubmissionId^`, and string
+    It supports various types of entity identifiers, including `TaskId`,
+    `DataNodeId`, `SequenceId`, `ScenarioId`, `JobId`, `CycleId`, `SubmissionId`, and string
     representations.
 
-    Parameters:
-        entity_id (Union[DataNodeId^, TaskId^, SequenceId^, ScenarioId^, JobId^, CycleId^, SubmissionId^, str]): The
+    Arguments:
+        entity_id (Union[DataNodeId, TaskId, SequenceId, ScenarioId, JobId, CycleId, SubmissionId, str]): The
             identifier of the entity to check for existence.
 
     Returns:
-        True if the given entity exists. False otherwise.
+        A ReasonCollection object that can function as a Boolean value,
+        which is True if the given entity exists. False otherwise.
 
     Raises:
         ModelNotFound: If the entity's type cannot be determined.
@@ -344,43 +336,35 @@ def exists(entity_id: Union[TaskId, DataNodeId, SequenceId, ScenarioId, JobId, C
 
 
 @overload
-def get(entity_id: TaskId) -> Task:
-    ...
+def get(entity_id: TaskId) -> Task: ...
 
 
 @overload
-def get(entity_id: DataNodeId) -> DataNode:
-    ...
+def get(entity_id: DataNodeId) -> DataNode: ...
 
 
 @overload
-def get(entity_id: SequenceId) -> Sequence:
-    ...
+def get(entity_id: SequenceId) -> Sequence: ...
 
 
 @overload
-def get(entity_id: ScenarioId) -> Scenario:
-    ...
+def get(entity_id: ScenarioId) -> Scenario: ...
 
 
 @overload
-def get(entity_id: CycleId) -> Cycle:
-    ...
+def get(entity_id: CycleId) -> Cycle: ...
 
 
 @overload
-def get(entity_id: JobId) -> Job:
-    ...
+def get(entity_id: JobId) -> Job: ...
 
 
 @overload
-def get(entity_id: SubmissionId) -> Submission:
-    ...
+def get(entity_id: SubmissionId) -> Submission: ...
 
 
 @overload
-def get(entity_id: str) -> Union[Task, DataNode, Sequence, Scenario, Job, Cycle, Submission]:
-    ...
+def get(entity_id: str) -> Union[Task, DataNode, Sequence, Scenario, Job, Cycle, Submission]: ...
 
 
 def get(
@@ -390,10 +374,10 @@ def get(
 
     This function allows you to retrieve an entity by specifying its identifier.
     The identifier must match the pattern of one of the supported entity types:
-    Task^, DataNode^, Sequence^, Job^, Cycle^, Submission^, or Scenario^.
+    `Task^`, `DataNode^`, `Sequence^`, `Job^`, `Cycle^`, `Submission^`, or `Scenario^`.
 
 
-    Parameters:
+    Arguments:
         entity_id (Union[TaskId, DataNodeId, SequenceId, ScenarioId, JobId, CycleId, str]):
             The identifier of the entity to retrieve.<br/>
             It should conform to the identifier pattern of one of the entities (`Task^`, `DataNode^`,
@@ -434,18 +418,19 @@ def get_tasks() -> List[Task]:
     return _TaskManagerFactory._build_manager()._get_all()
 
 
-def is_deletable(entity: Union[Scenario, Job, Submission, ScenarioId, JobId, SubmissionId]) -> bool:
+def is_deletable(entity: Union[Scenario, Job, Submission, ScenarioId, JobId, SubmissionId]) -> ReasonCollection:
     """Check if a `Scenario^`, a `Job^` or a `Submission^` can be deleted.
 
     This function determines whether a scenario or a job can be safely
     deleted without causing conflicts or issues.
 
-    Parameters:
+    Arguments:
         entity (Union[Scenario, Job, Submission, ScenarioId, JobId, SubmissionId]): The scenario,
             job or submission to check.
 
     Returns:
-        True if the given scenario, job or submission can be deleted. False otherwise.
+        A ReasonCollection object that can function as a Boolean value, which is True
+            if the given scenario, job or submission can be deleted. False otherwise.
     """
     if isinstance(entity, Job):
         return _JobManagerFactory._build_manager()._is_deletable(entity)
@@ -459,7 +444,7 @@ def is_deletable(entity: Union[Scenario, Job, Submission, ScenarioId, JobId, Sub
         return _SubmissionManagerFactory._build_manager()._is_deletable(entity)
     if isinstance(entity, str) and entity.startswith(Submission._ID_PREFIX):
         return _SubmissionManagerFactory._build_manager()._is_deletable(SubmissionId(entity))
-    return True
+    return ReasonCollection()._add_reason(str(entity), EntityDoesNotExist(str(entity)))
 
 
 def delete(entity_id: Union[TaskId, DataNodeId, SequenceId, ScenarioId, JobId, CycleId, SubmissionId]):
@@ -476,16 +461,16 @@ def delete(entity_id: Union[TaskId, DataNodeId, SequenceId, ScenarioId, JobId, C
     - If a `SequenceId` is provided, the related jobs are deleted.
     - If a `TaskId` is provided, the related data nodes, and jobs are deleted.
     - If a `DataNodeId` is provided, the data node is deleted.
-    - If a `SubmissionId^` is provided, the related jobs are deleted.
+    - If a `SubmissionId` is provided, the related jobs are deleted.
       The submission can only be deleted if the execution has been finished.
-    - If a `JobId^` is provided, the job entity can only be deleted if the execution has been finished.
+    - If a `JobId` is provided, the job entity can only be deleted if the execution has been finished.
 
-    Parameters:
+    Arguments:
         entity_id (Union[TaskId, DataNodeId, SequenceId, ScenarioId, SubmissionId, JobId, CycleId]):
             The identifier of the entity to delete.
 
     Raises:
-        ModelNotFound: No entity corresponds to the specified *entity_id*.
+        ModelNotFound^: No entity corresponds to the specified *entity_id*.
     """
     if _is_job(entity_id):
         job_manager = _JobManagerFactory._build_manager()
@@ -505,39 +490,63 @@ def delete(entity_id: Union[TaskId, DataNodeId, SequenceId, ScenarioId, JobId, C
     raise ModelNotFound("NOT_DETERMINED", entity_id)
 
 
-def get_scenarios(cycle: Optional[Cycle] = None, tag: Optional[str] = None) -> List[Scenario]:
+def get_scenarios(
+    cycle: Optional[Cycle] = None,
+    tag: Optional[str] = None,
+    is_sorted: bool = False,
+    descending: bool = False,
+    created_start_time: Optional[datetime] = None,
+    created_end_time: Optional[datetime] = None,
+    sort_key: Literal["name", "id", "config_id", "creation_date", "tags"] = "name",
+) -> List[Scenario]:
     """Retrieve a list of existing scenarios filtered by cycle or tag.
 
     This function allows you to retrieve a list of scenarios based on optional
-    filtering criteria. If both a _cycle_ and a _tag_ are provided, the returned
-    list contains scenarios that belong to the specified _cycle_ **and** also
-    have the specified _tag_.
+    filtering criteria. If both a *cycle* and a *tag* are provided, the returned
+    list contains scenarios that belong to the specified *cycle* and also
+    have the specified *tag*.
 
-    Parameters:
-         cycle (Optional[Cycle^]): The optional `Cycle^` to filter scenarios by.
-         tag (Optional[str]): The optional tag to filter scenarios by.
+    Arguments:
+        cycle (Optional[Cycle^]): The optional `Cycle^` to filter scenarios by.
+        tag (Optional[str]): The optional tag to filter scenarios by.
+        is_sorted (bool): If True, sort the output list of scenarios using the sorting key.
+            The default value is False.
+        descending (bool): If True, sort the output list of scenarios in descending order.
+            The default value is False.
+        created_start_time (Optional[datetime]): The optional inclusive start date to filter scenarios by creation date.
+        created_end_time (Optional[datetime]): The optional exclusive end date to filter scenarios by creation date.
+        sort_key (Literal["name", "id", "creation_date", "tags"]): The optional sort_key to
+            decide upon what key scenarios are sorted. The sorting is in increasing order for
+            dates, in alphabetical order for name and id, and in lexicographical order for tags.
+            The default value is "name".<br/>
+            If an incorrect sorting key is provided, the scenarios are sorted by name.
 
     Returns:
-        The list of scenarios filtered by cycle or tag. If no filtering criteria
-            are provided, this method returns all existing scenarios.
+        The list of scenarios filtered by cycle or tag.
     """
     scenario_manager = _ScenarioManagerFactory._build_manager()
     if not cycle and not tag:
-        return scenario_manager._get_all()
-    if cycle and not tag:
-        return scenario_manager._get_all_by_cycle(cycle)
-    if not cycle and tag:
-        return scenario_manager._get_all_by_tag(tag)
-    if cycle and tag:
-        cycles_scenarios = scenario_manager._get_all_by_cycle(cycle)
-        return [scenario for scenario in cycles_scenarios if scenario.has_tag(tag)]
-    return []
+        scenarios = scenario_manager._get_all()
+    elif cycle and not tag:
+        scenarios = scenario_manager._get_all_by_cycle(cycle)
+    elif not cycle and tag:
+        scenarios = scenario_manager._get_all_by_tag(tag)
+    elif cycle and tag:
+        scenarios = scenario_manager._get_all_by_cycle_tag(cycle, tag)
+    else:
+        scenarios = []
+
+    if created_start_time or created_end_time:
+        scenarios = scenario_manager._filter_by_creation_time(scenarios, created_start_time, created_end_time)
+    if is_sorted:
+        scenario_manager._sort_scenarios(scenarios, descending, sort_key)
+    return scenarios
 
 
 def get_primary(cycle: Cycle) -> Optional[Scenario]:
     """Retrieve the primary scenario associated with a cycle.
 
-    Parameters:
+    Arguments:
         cycle (Cycle^): The cycle for which to retrieve the primary scenario.
 
     Returns:
@@ -547,26 +556,53 @@ def get_primary(cycle: Cycle) -> Optional[Scenario]:
     return _ScenarioManagerFactory._build_manager()._get_primary(cycle)
 
 
-def get_primary_scenarios() -> List[Scenario]:
+def get_primary_scenarios(
+    is_sorted: bool = False,
+    descending: bool = False,
+    created_start_time: Optional[datetime] = None,
+    created_end_time: Optional[datetime] = None,
+    sort_key: Literal["name", "id", "config_id", "creation_date", "tags"] = "name",
+) -> List[Scenario]:
     """Retrieve a list of all primary scenarios.
 
+    Arguments:
+        is_sorted (bool): If True, sort the output list of scenarios using the sorting key.
+            The default value is False.
+        descending (bool): If True, sort the output list of scenarios in descending order.
+            The default value is False.
+        created_start_time (Optional[datetime]): The optional inclusive start date to filter scenarios by creation date.
+        created_end_time (Optional[datetime]): The optional exclusive end date to filter scenarios by creation date.
+        sort_key (Literal["name", "id", "creation_date", "tags"]): The optional sort_key to
+            decide upon what key scenarios are sorted. The sorting is in increasing order for
+            dates, in alphabetical order for name and id, and in lexicographical order for tags.
+            The default value is "name".<br/>
+            If an incorrect sorting key is provided, the scenarios are sorted by name.
+
     Returns:
-        A list containing all primary scenarios.
+        A list contains all primary scenarios.
     """
-    return _ScenarioManagerFactory._build_manager()._get_primary_scenarios()
+    scenario_manager = _ScenarioManagerFactory._build_manager()
+    scenarios = scenario_manager._get_primary_scenarios()
+
+    if created_start_time or created_end_time:
+        scenarios = scenario_manager._filter_by_creation_time(scenarios, created_start_time, created_end_time)
+    if is_sorted:
+        scenario_manager._sort_scenarios(scenarios, descending, sort_key)
+    return scenarios
 
 
-def is_promotable(scenario: Union[Scenario, ScenarioId]) -> bool:
+def is_promotable(scenario: Union[Scenario, ScenarioId]) -> ReasonCollection:
     """Determine if a scenario can be promoted to become a primary scenario.
 
     This function checks whether the given scenario is eligible to be promoted
     as a primary scenario.
 
-    Parameters:
-        scenario (Union[Scenario, ScenarioId]): The scenario to be evaluated for promotability.
+    Arguments:
+        scenario (Union[Scenario, ScenarioId]): The scenario to be evaluated for promotion.
 
     Returns:
-        True if the given scenario can be promoted to be a primary scenario. False otherwise.
+        A ReasonCollection object that can function as a Boolean value,
+        which is True if the given scenario can be promoted to be a primary scenario. False otherwise.
     """
     return _ScenarioManagerFactory._build_manager()._is_promotable_to_primary(scenario)
 
@@ -578,7 +614,7 @@ def set_primary(scenario: Scenario):
     If the cycle already has a primary scenario, that scenario is demoted and is
     no longer considered the primary scenario for its cycle.
 
-    Parameters:
+    Arguments:
         scenario (Scenario^): The scenario to promote as the new _primary_ scenario.
     """
     return _ScenarioManagerFactory._build_manager()._set_primary(scenario)
@@ -587,10 +623,9 @@ def set_primary(scenario: Scenario):
 def tag(scenario: Scenario, tag: str):
     """Add a tag to a scenario.
 
-    This function adds a user-defined tag to the specified scenario. If another scenario
-    within the same cycle already has the same tag applied, the previous scenario is untagged.
+    This function adds a user-defined tag to the specified scenario.
 
-    Parameters:
+    Arguments:
         scenario (Scenario^): The scenario to which the tag will be added.
         tag (str): The tag to apply to the scenario.
     """
@@ -603,7 +638,7 @@ def untag(scenario: Scenario, tag: str):
     This function removes a specified tag from the given scenario. If the scenario does
     not have the specified tag, it has no effect.
 
-    Parameters:
+    Arguments:
         scenario (Scenario^): The scenario from which the tag will be removed.
         tag (str): The tag to remove from the scenario.
     """
@@ -616,7 +651,7 @@ def compare_scenarios(*scenarios: Scenario, data_node_config_id: Optional[str] =
     You can specify which data node config identifier should the comparison be performed
     on.
 
-    Parameters:
+    Arguments:
         *scenarios (*Scenario^): The list of the scenarios to compare.
         data_node_config_id (Optional[str]): The config identifier of the DataNode to perform
             the comparison on. <br/>
@@ -650,7 +685,7 @@ def subscribe_scenario(
     The subscription is applied to all jobs created for the execution of _scenario_.
     If no scenario is provided, the subscription applies to all scenarios.
 
-    Parameters:
+    Arguments:
         callback (Callable[[Scenario^, Job^], None]): The function to be called on
             status change.
         params (Optional[List[Any]]): The parameters to be passed to the _callback_.
@@ -671,7 +706,7 @@ def unsubscribe_scenario(
 
     If no scenario is provided, the subscription is removed for all scenarios.
 
-    Parameters:
+    Arguments:
         callback (Callable[[Scenario^, Job^], None]): The function to unsubscribe from.
         params (Optional[List[Any]]): The parameters to be passed to the callback.
         scenario (Optional[Scenario]): The scenario to unsubscribe from. If None, it
@@ -690,7 +725,7 @@ def subscribe_sequence(
 
     The subscription is applied to all jobs created for the execution of _sequence_.
 
-    Parameters:
+    Arguments:
         callback (Callable[[Sequence^, Job^], None]): The callable function to be called on
             status change.
         params (Optional[List[Any]]): The parameters to be passed to the _callback_.
@@ -705,10 +740,10 @@ def subscribe_sequence(
 
 def unsubscribe_sequence(
     callback: Callable[[Sequence, Job], None], params: Optional[List[Any]] = None, sequence: Optional[Sequence] = None
-):
+) -> None:
     """Unsubscribe a function that is called when the status of a Job changes.
 
-    Parameters:
+    Arguments:
         callback (Callable[[Sequence^, Job^], None]): The callable function to be called on
             status change.
         params (Optional[List[Any]]): The parameters to be passed to the _callback_.
@@ -754,7 +789,7 @@ def delete_job(job: Job, force: Optional[bool] = False):
     This function deletes the specified job. If the job is not completed and
     *force* is not set to True, a `JobNotDeletedException^` may be raised.
 
-    Parameters:
+    Arguments:
         job (Job^): The job to delete.
         force (Optional[bool]): If True, forces the deletion of _job_, even
             if it is not completed yet.
@@ -775,7 +810,7 @@ def cancel_job(job: Union[str, Job]):
 
     This function cancels the specified job and sets the status of any subsequent jobs to ABANDONED.
 
-    Parameters:
+    Arguments:
         job (Job^): The job to cancel.
     """
     _JobManagerFactory._build_manager()._cancel(job)
@@ -786,7 +821,7 @@ def get_latest_job(task: Task) -> Optional[Job]:
 
     This function retrieves the latest job associated with a task.
 
-    Parameters:
+    Arguments:
         task (Task^): The task to retrieve the latest job from.
 
     Returns:
@@ -800,7 +835,7 @@ def get_latest_submission(entity: Union[Scenario, Sequence, Task]) -> Optional[S
 
     This function retrieves the latest submission associated with a scenario, sequence or task.
 
-    Parameters:
+    Arguments:
         entity (Union[Scenario^, Sequence^, Task^]): The scenario, sequence or task to
             retrieve the latest submission from.
 
@@ -829,6 +864,20 @@ def get_cycles() -> List[Cycle]:
     return _CycleManagerFactory._build_manager()._get_all()
 
 
+def can_create(config: Union[ScenarioConfig, DataNodeConfig, None] = None) -> ReasonCollection:
+    """Indicate if a config section can be used to instantiate a scenario or a data node.
+
+    If no config is provided, the function indicates if any scenario or data node config can be created.
+
+    Returns:
+        True if the given config can be created. False otherwise.
+    """
+    if isinstance(config, DataNodeConfig):
+        return _DataManagerFactory._build_manager()._can_create(config)
+
+    return _ScenarioManagerFactory._build_manager()._can_create(config)
+
+
 def create_scenario(
     config: ScenarioConfig,
     creation_date: Optional[datetime] = None,
@@ -842,7 +891,7 @@ def create_scenario(
     If the scenario belongs to a cycle, the cycle (corresponding to the _creation_date_
     and the configuration frequency attribute) is created if it does not exist yet.
 
-    Parameters:
+    Arguments:
         config (ScenarioConfig^): The scenario configuration used to create a new scenario.
         creation_date (Optional[datetime.datetime]): The creation date of the scenario.
             If None, the current date time is used.
@@ -855,7 +904,7 @@ def create_scenario(
         SystemExit: If the configuration check returns some errors.
 
     """
-    Core._manage_version_and_block_config()
+    Orchestrator._manage_version_and_block_config()
 
     return _ScenarioManagerFactory._build_manager()._create(config, creation_date, name)
 
@@ -866,7 +915,7 @@ def create_global_data_node(config: DataNodeConfig) -> DataNode:
     This function checks and locks the configuration, manages application's version,
     and creates the new data node from the data node configuration provided.
 
-    Parameters:
+    Arguments:
         config (DataNodeConfig^): The data node configuration. It must have a `GLOBAL` scope.
 
     Returns:
@@ -880,34 +929,23 @@ def create_global_data_node(config: DataNodeConfig) -> DataNode:
     if config.scope is not Scope.GLOBAL:
         raise DataNodeConfigIsNotGlobal(config.id)
 
-    Core._manage_version_and_block_config()
+    Orchestrator._manage_version_and_block_config()
 
     if dns := _DataManagerFactory._build_manager()._get_by_config_id(config.id):
         return dns[0]
     return _DataManagerFactory._build_manager()._create_and_set(config, None, None)
 
 
-def clean_all_entities_by_version(version_number=None) -> bool:
-    """Deprecated. Use `clean_all_entities` function instead."""
-    _warn_deprecated("'clean_all_entities_by_version'", suggest="the 'clean_all_entities' function")
-    return clean_all_entities(version_number)
-
-
 def clean_all_entities(version_number: str) -> bool:
     """Deletes all entities associated with the specified version.
+    This function cleans all entities, including jobs, submissions, scenarios, cycles, sequences, tasks, and data nodes.
 
-    Parameters:
-        version_number (str): The version number of the entities to be deleted.
-            The version_number should not be a production version.
+    Arguments:
+        version_number (str): The version number of the entities to be deleted.<br/>
+            - If the specified version does not exist, the operation will be aborted, and False will be returned.
 
     Returns:
         True if the operation succeeded, False otherwise.
-
-    Notes:
-        - If the specified version does not exist, the operation will be aborted, and False will be returned.
-        - If the specified version is a production version, the operation will be aborted, and False will be returned.
-        - This function cleans all entities, including jobs, submissions, scenarios, cycles, sequences, tasks,
-            and data nodes.
     """
     version_manager = _VersionManagerFactory._build_manager()
     try:
@@ -916,10 +954,9 @@ def clean_all_entities(version_number: str) -> bool:
         __logger.warning(f"{e.message} Abort cleaning the entities of version '{version_number}'.")
         return False
 
-    if version_number in version_manager._get_production_versions():
-        __logger.warning(
-            f"Abort cleaning the entities of version '{version_number}'. A production version can not be deleted."
-        )
+    if not version_manager._is_deletable(version_number):
+        reason_collection = version_manager._is_deletable(version_number)
+        __logger.warning(f"Abort cleaning the entities of version '{version_number}'. {reason_collection.reasons}.")
         return False
 
     _JobManagerFactory._build_manager()._delete_by_version(version_number)
@@ -928,51 +965,9 @@ def clean_all_entities(version_number: str) -> bool:
     _SequenceManagerFactory._build_manager()._delete_by_version(version_number)
     _TaskManagerFactory._build_manager()._delete_by_version(version_number)
     _DataManagerFactory._build_manager()._delete_by_version(version_number)
-
     version_manager._delete(version_number)
 
-    try:
-        version_manager._delete_production_version(version_number)
-    except VersionIsNotProductionVersion:
-        pass
-
     return True
-
-
-def export_scenario(
-    scenario_id: ScenarioId,
-    folder_path: Union[str, pathlib.Path],
-):
-    """Export all related entities of a scenario to a folder.
-
-    This function exports all related entities of the specified scenario to the
-    specified folder.
-
-    Parameters:
-        scenario_id (ScenarioId): The ID of the scenario to export.
-        folder_path (Union[str, pathlib.Path]): The folder path to export the scenario to.
-    """
-
-    manager = _ScenarioManagerFactory._build_manager()
-    scenario = manager._get(scenario_id)
-    entity_ids = manager._get_children_entity_ids(scenario)
-    entity_ids.scenario_ids = {scenario_id}
-    entity_ids.cycle_ids = {scenario.cycle.id}
-
-    shutil.rmtree(folder_path, ignore_errors=True)
-
-    for data_node_id in entity_ids.data_node_ids:
-        _DataManagerFactory._build_manager()._export(data_node_id, folder_path)
-    for task_id in entity_ids.task_ids:
-        _TaskManagerFactory._build_manager()._export(task_id, folder_path)
-    for sequence_id in entity_ids.sequence_ids:
-        _SequenceManagerFactory._build_manager()._export(sequence_id, folder_path)
-    for cycle_id in entity_ids.cycle_ids:
-        _CycleManagerFactory._build_manager()._export(cycle_id, folder_path)
-    for scenario_id in entity_ids.scenario_ids:
-        _ScenarioManagerFactory._build_manager()._export(scenario_id, folder_path)
-    for job_id in entity_ids.job_ids:
-        _JobManagerFactory._build_manager()._export(job_id, folder_path)
 
 
 def get_parents(
@@ -980,7 +975,7 @@ def get_parents(
 ) -> Dict[str, Set[_Entity]]:
     """Get the parents of an entity from itself or its identifier.
 
-    Parameters:
+    Arguments:
         entity (Union[TaskId, DataNodeId, SequenceId, Task, DataNode, Sequence]): The entity or its
             identifier to get the parents.
 
@@ -1059,19 +1054,74 @@ def get_entities_by_config_id(
 ) -> Union[List, List[Task], List[DataNode], List[Sequence], List[Scenario]]:
     """Get the entities by its config id.
 
-    Parameters:
+    Arguments:
         config_id (str): The config id of the entities
 
     Returns:
         The list of all entities by the config id.
     """
+    if scenarios := _ScenarioManagerFactory._build_manager()._get_by_config_id(config_id):
+        return scenarios
+    if tasks := _TaskManagerFactory._build_manager()._get_by_config_id(config_id):
+        return tasks
+    if data_nodes := _DataManagerFactory._build_manager()._get_by_config_id(config_id):
+        return data_nodes
+    return scenarios
 
-    entities: List = []
 
-    if entities := _ScenarioManagerFactory._build_manager()._get_by_config_id(config_id):
-        return entities
-    if entities := _TaskManagerFactory._build_manager()._get_by_config_id(config_id):
-        return entities
-    if entities := _DataManagerFactory._build_manager()._get_by_config_id(config_id):
-        return entities
-    return entities
+def can_duplicate(entity: Union[str, Scenario]) -> ReasonCollection:
+    """Indicate if a scenario can be duplicated.
+
+    Arguments:
+        entity (Union[str, Scenario]): The scenario or its id to check if it can be duplicated.
+
+    Returns:
+        True if the given scenario can be duplicated. False otherwise.
+    """
+    return _ScenarioManagerFactory._build_manager()._can_duplicate(entity)
+
+
+def duplicate_scenario(
+    scenario: Scenario,
+    new_creation_date: Optional[datetime] = None,
+    new_name: Optional[str] = None,
+    data_to_duplicate: Union[Set[str], bool] = True
+) -> Scenario:
+    """Duplicate an existing scenario and return a new scenario.
+
+    This function duplicates the provided scenario, optionally setting a new creation
+    date and name.
+
+    If the scenario belongs to a cycle, the cycle (corresponding to the creation_date
+    and the configuration frequency attribute) is created if it does not exist yet.
+
+    The nested entities are duplicated or not depending on the creation date of the new
+    scenario, its cycle, and the various data node scopes.
+
+    !!! warning "Data and data nodes duplication"
+
+        Note that for now, Taipy can only duplicate data for file-based data nodes. For
+        other types of data nodes (sql, mongo, etc.), the new data nodes are created
+        referencing the exact same data as the original data nodes. This can lead to
+        conflicts if the data is modified in one of the scenarios.
+
+        Users must ensure after a duplication that the data nodes' data are correctly
+        set for the new scenario.
+
+        For example, the table name of a SQL table data node must be manually updated to
+        avoid conflicts.
+
+    Arguments:
+        scenario (Scenario): The scenario to duplicate.
+        new_creation_date (Optional[datetime.datetime]): The creation date of the new scenario.
+            If None, the current date and time is used.
+        new_name (Optional[str]): The displayable name of the new scenario.
+        data_to_duplicate (Union[Set[str], bool]): A set of data node configuration ids used
+            to duplicate only the data nodes' data with the specified configuration ids.
+            If True, all data nodes are duplicated. If False, no data nodes are duplicated.
+
+    Returns:
+        Scenario: The newly duplicated scenario.
+    """
+
+    return _ScenarioManagerFactory._build_manager()._duplicate(scenario, new_creation_date, new_name, data_to_duplicate)

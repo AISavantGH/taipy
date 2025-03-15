@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,6 +11,7 @@
 
 from datetime import datetime
 
+import freezegun
 import pytest
 
 from taipy.core import TaskId
@@ -22,6 +23,21 @@ from taipy.core.submission.submission import Submission
 from taipy.core.submission.submission_status import SubmissionStatus
 from taipy.core.task._task_manager_factory import _TaskManagerFactory
 from taipy.core.task.task import Task
+
+
+def test_submission_equals(submission):
+    submission_manager = _SubmissionManagerFactory()._build_manager()
+
+    submission_id = submission.id
+    submission_manager._set(submission)
+
+    # To test if instance is same type
+    task = Task("task", {}, print, [], [], submission_id)
+
+    submission_2 = submission_manager._get(submission_id)
+    assert submission == submission_2
+    assert submission != submission_id
+    assert submission != task
 
 
 def test_create_submission(scenario, job, current_datetime):
@@ -109,7 +125,7 @@ def __test_update_submission_status(job_ids, expected_submission_status):
     submission.jobs = [jobs[job_id] for job_id in job_ids]
     for job_id in job_ids:
         job = jobs[job_id]
-        submission._update_submission_status(job)
+        _SubmissionManagerFactory._build_manager()._update_submission_status(submission, job)
     assert submission.submission_status == expected_submission_status
 
 
@@ -455,29 +471,33 @@ def test_auto_set_and_reload_properties():
     ],
 )
 def test_update_submission_status_with_single_job_completed(job_statuses, expected_submission_statuses):
+    submission_manager = _SubmissionManagerFactory._build_manager()
+
     job = MockJob("job_id", Status.SUBMITTED)
     submission = Submission("submission_id", "ENTITY_TYPE", "entity_config_id")
-    _SubmissionManagerFactory._build_manager()._set(submission)
+    submission_manager._set(submission)
 
     assert submission.submission_status == SubmissionStatus.SUBMITTED
 
     for job_status, submission_status in zip(job_statuses, expected_submission_statuses):
         job.status = job_status
-        submission._update_submission_status(job)
+        submission_manager._update_submission_status(submission, job)
         assert submission.submission_status == submission_status
 
 
 def __test_update_submission_status_with_two_jobs(job_ids, job_statuses, expected_submission_statuses):
+    submission_manager = _SubmissionManagerFactory._build_manager()
+
     jobs = {job_id: MockJob(job_id, Status.SUBMITTED) for job_id in job_ids}
     submission = Submission("submission_id", "ENTITY_TYPE", "entity_config_id")
-    _SubmissionManagerFactory._build_manager()._set(submission)
+    submission_manager._set(submission)
 
     assert submission.submission_status == SubmissionStatus.SUBMITTED
 
     for (job_id, job_status), submission_status in zip(job_statuses, expected_submission_statuses):
         job = jobs[job_id]
         job.status = job_status
-        submission._update_submission_status(job)
+        submission_manager._update_submission_status(submission, job)
         assert submission.submission_status == submission_status
 
 
@@ -884,3 +904,40 @@ def test_is_finished():
     submission.submission_status = SubmissionStatus.COMPLETED
     assert submission.submission_status == SubmissionStatus.COMPLETED
     assert submission.is_finished()
+
+
+def test_execution_duration():
+    task = Task(config_id="task_1", properties={}, function=print, id=TaskId("task_1"))
+    submission = Submission(task.id, task._ID_PREFIX, task.config_id, properties={})
+    job_1 = Job("job_1", task, submission.id, submission.entity_id)
+    job_2 = Job("job_2", task, submission.id, submission.entity_id)
+
+    _TaskManagerFactory._build_manager()._set(task)
+    _SubmissionManagerFactory._build_manager()._set(submission)
+    _JobManagerFactory._build_manager()._set(job_1)
+    _JobManagerFactory._build_manager()._set(job_2)
+
+    submission.jobs = [job_1, job_2]
+    _SubmissionManagerFactory._build_manager()._set(submission)
+
+    with freezegun.freeze_time("2024-09-25 13:30:35"):
+        job_1.running()
+        job_2.pending()
+
+    assert submission.run_at == datetime(2024, 9, 25, 13, 30, 35)
+    assert submission.execution_duration > 0
+
+    with freezegun.freeze_time("2024-09-25 13:33:45"):
+        job_1.completed()
+        job_2.running()
+        assert submission.execution_duration == 190  # = 13:33:45 - 13:30:35
+        assert submission.run_at == datetime(2024, 9, 25, 13, 30, 35)
+
+        # Job 2 is not completed, so the submission is not completed
+        assert submission.finished_at is None
+
+    with freezegun.freeze_time("2024-09-25 13:35:50"):
+        job_2.completed()
+
+    assert submission.finished_at == datetime(2024, 9, 25, 13, 35, 50)
+    assert submission.execution_duration == 315  # = 13:35:50 - 13:30:35

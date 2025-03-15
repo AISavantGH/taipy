@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -16,6 +16,13 @@ def test_text_md_1(gui: Gui, test_client, helpers):
     gui._bind_var_val("x", 10)
     md_string = "<|{x}|>"
     expected_list = ["<Field", 'dataType="int"', 'defaultValue="10"', "value={tpec_TpExPr_x_TPMDL_0}"]
+    helpers.test_control_md(gui, md_string, expected_list)
+
+
+def test_text_md_width(gui: Gui, test_client, helpers):
+    gui._bind_var_val("x", 10)
+    md_string = "<|{x}|text|width=70%|>"
+    expected_list = ["<Field", 'dataType="int"', 'defaultValue="10"', "value={tpec_TpExPr_x_TPMDL_0}", 'width="70%"']
     helpers.test_control_md(gui, md_string, expected_list)
 
 

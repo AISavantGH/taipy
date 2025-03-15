@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,24 +11,26 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import React, { CSSProperties, MouseEvent, useCallback, useContext, useEffect, useMemo } from "react";
+import React, { MouseEvent, useCallback, useContext, useEffect, useMemo } from "react";
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
-import { PaletteMode } from "@mui/material";
+import { PaletteMode, SxProps } from "@mui/material";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import WbSunny from "@mui/icons-material/WbSunny";
 import Brightness3 from "@mui/icons-material/Brightness3";
 
-import { TaipyActiveProps, emptyStyle } from "./utils";
+import { TaipyActiveProps, TaipyChangeProps, getCssSize } from "./utils";
 import { TaipyContext } from "../../context/taipyContext";
-import { createThemeAction } from "../../context/taipyReducers";
-import { useClassNames } from "../../utils/hooks";
+import { createSendUpdateAction, createThemeAction } from "../../context/taipyReducers";
+import { useClassNames, useModule } from "../../utils/hooks";
 import { getLocalStorageValue } from "../../context/utils";
+import { getComponentClassName } from "./TaipyStyle";
 
-interface ThemeToggleProps extends TaipyActiveProps {
-    style?: CSSProperties;
+interface ThemeToggleProps extends TaipyActiveProps, TaipyChangeProps {
+    style?: SxProps;
     label?: string;
+    width?: string | number;
 }
 
 const boxSx = {
@@ -41,7 +43,9 @@ const boxSx = {
     "& > *": {
         m: 1,
     },
-} as CSSProperties;
+} as SxProps;
+
+export const emptyStyle = {} as SxProps;
 
 const groupSx = { verticalAlign: "middle" };
 
@@ -49,11 +53,29 @@ const ThemeToggle = (props: ThemeToggleProps) => {
     const { id, label = "Mode", style = emptyStyle, active = true } = props;
     const { state, dispatch } = useContext(TaipyContext);
 
+    const module = useModule();
+
     const className = useClassNames(props.libClassName, props.dynamicClassName, props.className);
+
+    const updateBoundValue = useCallback(
+        (val: PaletteMode) => {
+            if (!props.updateVarName) {
+                return;
+            }
+            dispatch(
+                createSendUpdateAction(props.updateVarName, val === "dark", module, props.onChange, props.propagate),
+            );
+        },
+        [dispatch, props.updateVarName, props.onChange, props.propagate, module],
+    );
+
+    useEffect(() => {
+        updateBoundValue(state.theme.palette.mode);
+    }, [state.theme.palette.mode, updateBoundValue]);
 
     const changeMode = useCallback(
         (evt: MouseEvent, mode: PaletteMode) => mode !== null && dispatch(createThemeAction(mode === "dark")),
-        [dispatch]
+        [dispatch],
     );
 
     useEffect(() => {
@@ -63,9 +85,16 @@ const ThemeToggle = (props: ThemeToggleProps) => {
         }
     }, [state.theme.palette.mode, dispatch]);
 
-    const mainSx = useMemo(() => ({ ...boxSx, ...style }), [style]);
+    const mainSx = useMemo(
+        () =>
+            props.width
+                ? ({ ...boxSx, ...style, width: getCssSize(props.width) } as SxProps)
+                : ({ ...boxSx, ...style } as SxProps),
+        [style, props.width],
+    );
+
     return (
-        <Box id={id} sx={mainSx} className={className}>
+        <Box id={id} sx={mainSx} className={`${className} ${getComponentClassName(props.children)}`}>
             <Typography>{label}</Typography>
             <ToggleButtonGroup
                 value={state.theme.palette.mode}
@@ -74,6 +103,7 @@ const ThemeToggle = (props: ThemeToggleProps) => {
                 aria-label="Theme mode"
                 disabled={!active}
                 sx={groupSx}
+                fullWidth={!!props.width}
             >
                 <ToggleButton value="light" aria-label="light" title="Light">
                     <WbSunny />
@@ -82,6 +112,7 @@ const ThemeToggle = (props: ThemeToggleProps) => {
                     <Brightness3 />
                 </ToggleButton>
             </ToggleButtonGroup>
+            {props.children}
         </Box>
     );
 };

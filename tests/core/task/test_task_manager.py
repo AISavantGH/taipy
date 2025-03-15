@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -14,14 +14,15 @@ from unittest import mock
 
 import pytest
 
-from taipy.config.common.scope import Scope
-from taipy.config.config import Config
+from taipy import Scope
+from taipy.common.config import Config
 from taipy.core import taipy
 from taipy.core._orchestrator._orchestrator import _Orchestrator
 from taipy.core._version._version_manager import _VersionManager
 from taipy.core.data._data_manager import _DataManager
 from taipy.core.data.in_memory import InMemoryDataNode
 from taipy.core.exceptions.exceptions import ModelNotFound, NonExistingTask
+from taipy.core.reason import EntityDoesNotExist
 from taipy.core.task._task_manager import _TaskManager
 from taipy.core.task._task_manager_factory import _TaskManagerFactory
 from taipy.core.task.task import Task
@@ -308,6 +309,10 @@ def test_is_submittable():
     task_config = Config.configure_task("task", print, [dn_config])
     task = _TaskManager._bulk_get_or_create([task_config])[0]
 
+    rc = _TaskManager._is_submittable("some_task")
+    assert not rc
+    assert "Entity 'some_task' does not exist in the repository" in rc.reasons
+
     assert len(_TaskManager._get_all()) == 1
     assert _TaskManager._is_submittable(task)
     assert _TaskManager._is_submittable(task.id)
@@ -479,3 +484,21 @@ def test_get_scenarios_by_config_id_in_multiple_versions_environment():
 
 def _create_task_from_config(task_config, *args, **kwargs):
     return _TaskManager._bulk_get_or_create([task_config], *args, **kwargs)[0]
+
+def test_can_duplicate():
+    dn_config = Config.configure_pickle_data_node("dn", scope=Scope.SCENARIO)
+    task_config = Config.configure_task("task_1", print, [dn_config])
+    task = _TaskManager._bulk_get_or_create([task_config])[0]
+
+    reasons = _TaskManager._can_duplicate(task.id)
+    assert bool(reasons)
+    assert reasons._reasons == {}
+
+    reasons = _TaskManager._can_duplicate(task)
+    assert bool(reasons)
+    assert reasons._reasons == {}
+
+    reasons = _TaskManager._can_duplicate("1")
+    assert not bool(reasons)
+    assert reasons._reasons["1"] == {EntityDoesNotExist("1")}
+    assert str(list(reasons._reasons["1"])[0]) == "Entity '1' does not exist in the repository"

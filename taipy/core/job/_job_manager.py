@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -18,6 +18,7 @@ from .._version._version_manager_factory import _VersionManagerFactory
 from .._version._version_mixin import _VersionMixin
 from ..exceptions.exceptions import JobNotDeletedException
 from ..notification import EventEntityType, EventOperation, Notifier, _make_event
+from ..reason import EntityDoesNotExist, JobIsNotFinished, ReasonCollection
 from ..task.task import Task
 from .job import Job
 from .job_id import JobId
@@ -58,7 +59,9 @@ class _JobManager(_Manager[Job], _VersionMixin):
         return job
 
     @classmethod
-    def _delete(cls, job: Job, force=False):
+    def _delete(cls, job: Union[Job, JobId], force=False) -> None:
+        if isinstance(job, str):
+            job = cls._get(job)
         if cls._is_deletable(job) or force:
             super()._delete(job.id)
         else:
@@ -67,7 +70,7 @@ class _JobManager(_Manager[Job], _VersionMixin):
             raise err
 
     @classmethod
-    def _cancel(cls, job: Union[str, Job]):
+    def _cancel(cls, job: Union[str, Job]) -> None:
         job = cls._get(job) if isinstance(job, str) else job
 
         from .._orchestrator._orchestrator_factory import _OrchestratorFactory
@@ -85,7 +88,17 @@ class _JobManager(_Manager[Job], _VersionMixin):
             return max(jobs_of_task)
 
     @classmethod
-    def _is_deletable(cls, job: Union[Job, JobId]) -> bool:
+    def _is_deletable(cls, job: Union[Job, JobId]) -> ReasonCollection:
+        reason_collector = ReasonCollection()
+
         if isinstance(job, str):
-            job = cls._get(job)
-        return job.is_finished()
+            job_id = job
+            job = cls._get(job, None)
+            if job is None:
+                reason_collector._add_reason(job_id, EntityDoesNotExist(job_id))
+                return reason_collector
+
+        if not job.is_finished():
+            reason_collector._add_reason(job.id, JobIsNotFinished(job.id))
+
+        return reason_collector

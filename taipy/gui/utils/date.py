@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -23,6 +23,8 @@ def _date_to_string(date_val: t.Union[datetime, date, time]) -> str:
     if isinstance(date_val, datetime):
         # return date.isoformat() + 'Z', if possible
         try:
+            if date_val.tzinfo is None:
+                return date_val.isoformat()
             return date_val.astimezone(utc).isoformat()
         except Exception as e:
             # astimezone() fails on Windows for pre-epoch times

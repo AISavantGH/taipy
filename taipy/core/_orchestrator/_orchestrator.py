@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -16,8 +16,8 @@ from threading import Lock
 from time import sleep
 from typing import Callable, Iterable, List, Optional, Set, Union
 
-from taipy.config.config import Config
-from taipy.logger._taipy_logger import _TaipyLogger
+from taipy.common.config import Config
+from taipy.common.logger._taipy_logger import _TaipyLogger
 
 from .._entity.submittable import Submittable
 from ..data._data_manager_factory import _DataManagerFactory
@@ -52,12 +52,12 @@ class _Orchestrator(_AbstractOrchestrator):
         callbacks: Optional[Iterable[Callable]] = None,
         force: bool = False,
         wait: bool = False,
-        timeout: Optional[Union[float, int]] = None,
+        timeout: Union[float, int, None] = None,
         **properties,
     ) -> Submission:
         """Submit the given `Scenario^` or `Sequence^` for an execution.
 
-        Parameters:
+        Arguments:
              submittable (Union[Scenario^, Sequence^]): The scenario or sequence to submit for execution.
              callbacks: The optional list of functions that should be executed on jobs status change.
              force (bool) : Enforce execution of the scenario's or sequence's tasks even if their output data
@@ -65,9 +65,11 @@ class _Orchestrator(_AbstractOrchestrator):
              wait (bool): Wait for the orchestrated jobs created from the scenario or sequence submission to be
                 finished in asynchronous mode.
              timeout (Union[float, int]): The optional maximum number of seconds to wait for the jobs to be finished
-                before returning.
+                before returning.<br/>
+                If not provided and *wait* is True, the function waits indefinitely.
              **properties (dict[str, any]): A key worded variable length list of user additional arguments
                 that will be stored within the `Submission^`. It can be accessed via `Submission.properties^`.
+
         Returns:
             The created `Submission^` containing the information about the submission.
         """
@@ -97,7 +99,7 @@ class _Orchestrator(_AbstractOrchestrator):
         if Config.job_config.is_development:
             cls._check_and_execute_jobs_if_development_mode()
         elif wait:
-            cls._wait_until_job_finished(jobs, timeout=timeout or 0)
+            cls._wait_until_job_finished(jobs, timeout)
         return submission
 
     @classmethod
@@ -107,21 +109,23 @@ class _Orchestrator(_AbstractOrchestrator):
         callbacks: Optional[Iterable[Callable]] = None,
         force: bool = False,
         wait: bool = False,
-        timeout: Optional[Union[float, int]] = None,
+        timeout: Union[float, int, None] = None,
         **properties,
     ) -> Submission:
         """Submit the given `Task^` for an execution.
 
-        Parameters:
+        Arguments:
              task (Task^): The task to submit for execution.
              callbacks: The optional list of functions that should be executed on job status change.
              force (bool): Enforce execution of the task even if its output data nodes are cached.
              wait (bool): Wait for the orchestrated job created from the task submission to be finished
                 in asynchronous mode.
              timeout (Union[float, int]): The optional maximum number of seconds to wait for the job
-                to be finished before returning.
+                to be finished before returning.<br/>
+                If not provided and *wait* is True, the function waits indefinitely.
              **properties (dict[str, any]): A key worded variable length list of user additional arguments
                 that will be stored within the `Submission^`. It can be accessed via `Submission.properties^`.
+
         Returns:
             The created `Submission^` containing the information about the submission.
         """
@@ -145,7 +149,7 @@ class _Orchestrator(_AbstractOrchestrator):
             cls._check_and_execute_jobs_if_development_mode()
         else:
             if wait:
-                cls._wait_until_job_finished(job, timeout=timeout or 0)
+                cls._wait_until_job_finished(job, timeout)
         return submission
 
     @classmethod
@@ -164,11 +168,12 @@ class _Orchestrator(_AbstractOrchestrator):
         )
 
     @classmethod
-    def _update_submission_status(cls, job: Job):
-        if submission := _SubmissionManagerFactory._build_manager()._get(job.submit_id):
-            submission._update_submission_status(job)
+    def _update_submission_status(cls, job: Job) -> None:
+        submission_manager = _SubmissionManagerFactory._build_manager()
+        if submission := submission_manager._get(job.submit_id):
+            submission_manager._update_submission_status(submission, job)
         else:
-            submissions = _SubmissionManagerFactory._build_manager()._get_all()
+            submissions = submission_manager._get_all()
             cls.__logger.error(f"Submission {job.submit_id} not found.")
             msg = "\n--------------------------------------------------------------------------------\n"
             msg += f"Submission {job.submit_id} not found.\n"
@@ -181,7 +186,7 @@ class _Orchestrator(_AbstractOrchestrator):
             cls.__logger.error(f"Job {job.id} status: {job.status}")
 
     @classmethod
-    def _orchestrate_job_to_run_or_block(cls, jobs: List[Job]):
+    def _orchestrate_job_to_run_or_block(cls, jobs: List[Job]) -> None:
         blocked_jobs = []
         pending_jobs = []
 
@@ -198,9 +203,11 @@ class _Orchestrator(_AbstractOrchestrator):
             cls.jobs_to_run.put(job)
 
     @classmethod
-    def _wait_until_job_finished(cls, jobs: Union[List[Job], Job], timeout: float = 0):
+    def _wait_until_job_finished(cls, jobs: Union[List[Job], Job], timeout: Union[float, int, None] = None) -> None:
         #  Note: this method should be prefixed by two underscores, but it has only one, so it can be mocked in tests.
         def __check_if_timeout(st, to):
+            if to is None:
+                return True
             return (datetime.now() - st).seconds < to
 
         start = datetime.now()
@@ -219,7 +226,7 @@ class _Orchestrator(_AbstractOrchestrator):
     def _is_blocked(cls, obj: Union[Task, Job]) -> bool:
         """Returns True if the execution of the `Job^` or the `Task^` is blocked by the execution of another `Job^`.
 
-        Parameters:
+        Arguments:
              obj (Union[Task^, Job^]): The job or task entity to run.
 
         Returns:
@@ -230,13 +237,13 @@ class _Orchestrator(_AbstractOrchestrator):
         return any(not data_manager._get(dn.id).is_ready_for_reading for dn in input_data_nodes)
 
     @staticmethod
-    def _unlock_edit_on_jobs_outputs(jobs: Union[Job, List[Job], Set[Job]]):
+    def _unlock_edit_on_jobs_outputs(jobs: Union[Job, List[Job], Set[Job]]) -> None:
         jobs = [jobs] if isinstance(jobs, Job) else jobs
         for job in jobs:
             job._unlock_edit_on_outputs()
 
     @classmethod
-    def _on_status_change(cls, job: Job):
+    def _on_status_change(cls, job: Job) -> None:
         if job.is_completed() or job.is_skipped():
             cls.__logger.debug(f"{job.id} has been completed or skipped. Unblocking jobs.")
             cls.__unblock_jobs()
@@ -244,7 +251,7 @@ class _Orchestrator(_AbstractOrchestrator):
             cls._fail_subsequent_jobs(job)
 
     @classmethod
-    def __unblock_jobs(cls):
+    def __unblock_jobs(cls) -> None:
         with cls.lock:
             cls.__logger.debug("Acquiring lock to unblock jobs.")
             for job in cls.blocked_jobs:
@@ -257,14 +264,14 @@ class _Orchestrator(_AbstractOrchestrator):
                     cls.jobs_to_run.put(job)
 
     @classmethod
-    def __remove_blocked_job(cls, job):
+    def __remove_blocked_job(cls, job: Job) -> None:
         try:  # In case the job has been removed from the list of blocked_jobs.
             cls.blocked_jobs.remove(job)
         except Exception:
             cls.__logger.warning(f"{job.id} is not in the blocked list anymore.")
 
     @classmethod
-    def cancel_job(cls, job: Job):
+    def cancel_job(cls, job: Job) -> None:
         if job.is_canceled():
             cls.__logger.info(f"{job.id} has already been canceled.")
         elif job.is_abandoned():
@@ -297,13 +304,13 @@ class _Orchestrator(_AbstractOrchestrator):
         return subsequent_jobs
 
     @classmethod
-    def __remove_blocked_jobs(cls, jobs):
+    def __remove_blocked_jobs(cls, jobs: Set[Job]) -> None:
         for job in jobs:
             cls.__remove_blocked_job(job)
 
     @classmethod
-    def __remove_jobs_to_run(cls, jobs):
-        new_jobs_to_run = Queue()
+    def __remove_jobs_to_run(cls, jobs: Set[Job]) -> None:
+        new_jobs_to_run: Queue = Queue()
         while not cls.jobs_to_run.empty():
             current_job = cls.jobs_to_run.get()
             if current_job not in jobs:
@@ -311,7 +318,7 @@ class _Orchestrator(_AbstractOrchestrator):
         cls.jobs_to_run = new_jobs_to_run
 
     @classmethod
-    def _fail_subsequent_jobs(cls, failed_job: Job):
+    def _fail_subsequent_jobs(cls, failed_job: Job) -> None:
         with cls.lock:
             cls.__logger.debug("Acquiring lock to fail subsequent jobs.")
             to_fail_or_abandon_jobs = set()
@@ -326,7 +333,7 @@ class _Orchestrator(_AbstractOrchestrator):
             cls._unlock_edit_on_jobs_outputs(to_fail_or_abandon_jobs)
 
     @classmethod
-    def _cancel_jobs(cls, job_id_to_cancel: JobId, jobs: Set[Job]):
+    def _cancel_jobs(cls, job_id_to_cancel: JobId, jobs: Set[Job]) -> None:
         for job in jobs:
             if job.is_running():
                 cls.__logger.info(f"{job.id} is running and cannot be canceled.")
@@ -340,7 +347,7 @@ class _Orchestrator(_AbstractOrchestrator):
                 job.abandoned()
 
     @staticmethod
-    def _check_and_execute_jobs_if_development_mode():
+    def _check_and_execute_jobs_if_development_mode() -> None:
         from ._orchestrator_factory import _OrchestratorFactory
 
         if dispatcher := _OrchestratorFactory._dispatcher:

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -12,9 +12,12 @@
  */
 
 import { useContext, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import axios from "axios";
+import { useLocation, useNavigate } from "react-router";
+
 import { TaipyContext } from "../../context/taipyContext";
 import { createNavigateAction } from "../../context/taipyReducers";
+import { getBaseURL } from "../../utils";
 
 interface NavigateProps {
     to?: string;
@@ -27,11 +30,12 @@ const Navigate = ({ to, params, tab, force }: NavigateProps) => {
     const { dispatch, state } = useContext(TaipyContext);
     const navigate = useNavigate();
     const location = useLocation();
-    const SPECIAL_PARAMS = ["tp_reload_all", "tp_reload_same_route_only", "tprh", "tp_cp_meta"];
+    const SPECIAL_PARAMS = ["tp_reload_all", "tp_reload_same_route_only", "tprh"];
 
     useEffect(() => {
         if (to) {
             const tos = to === "/" ? to : "/" + to;
+            const navigatePath = getBaseURL() + tos.slice(1)
             const filteredParams = params
                 ? Object.keys(params).reduce((acc, key) => {
                       if (!SPECIAL_PARAMS.includes(key)) {
@@ -45,7 +49,8 @@ const Navigate = ({ to, params, tab, force }: NavigateProps) => {
             const reloadAll = params?.tp_reload_all === "true";
             const reloadSameRouteOnly = params?.tp_reload_same_route_only === "true";
             if (reloadAll) {
-                return navigate(0);
+                navigate(0);
+                return;
             }
             if (reloadSameRouteOnly) {
                 if (location.pathname === tos) {
@@ -56,20 +61,22 @@ const Navigate = ({ to, params, tab, force }: NavigateProps) => {
             // Regular navigate cases
             if (Object.keys(state.locations || {}).some((route) => tos === route)) {
                 const searchParamsLocation = new URLSearchParams(location.search);
-                if (force && location.pathname === tos && searchParamsLocation.toString() === searchParams.toString()) {
+                if (force && location.pathname === navigatePath  && searchParamsLocation.toString() === searchParams.toString()) {
                     navigate(0);
                 } else {
-                    navigate({ pathname: to, search: `?${searchParams.toString()}` });
+                    navigate({ pathname: navigatePath, search: `?${searchParams.toString()}` });
                     // Handle Resource Handler Id
                     const tprh = params?.tprh;
                     if (tprh !== undefined) {
-                        // Add a session cookie for the resource handler id
-                        document.cookie = `tprh=${tprh};path=/;`;
-                        const meta = params?.tp_cp_meta;
-                        if (meta !== undefined) {
-                            localStorage.setItem("tp_cp_meta", meta);
-                        }
-                        navigate(0);
+                        axios.post(`taipy-rh`, { tprh, is_secure: window.location.protocol.includes("https") }).then(() => {
+                            localStorage.setItem("tprh", tprh);
+                            navigate(0);
+                        }).catch((error) => {
+                            console.error(
+                                "Cannot resolve resource handler. Route `/taipy-rh` might be missing.",
+                                error,
+                            );
+                        });
                     }
                 }
             } else {

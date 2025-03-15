@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -24,9 +24,7 @@ def build_gui(root_path: Path):
         print(f'Found taipy-gui frontend bundle in {root_path  / "taipy" / "gui" / "webapp"}.')  # noqa: T201
     else:
         subprocess.run(["npm", "ci"], cwd=root_path / "frontend" / "taipy-gui" / "dom", check=True, shell=with_shell)
-        subprocess.run(
-            ["npm", "ci", "--omit=optional"], cwd=root_path / "frontend" / "taipy-gui", check=True, shell=with_shell
-        )
+        subprocess.run(["npm", "ci"], cwd=root_path / "frontend" / "taipy-gui", check=True, shell=with_shell)
         subprocess.run(["npm", "run", "build"], cwd=root_path / "frontend" / "taipy-gui", check=True, shell=with_shell)
 
 

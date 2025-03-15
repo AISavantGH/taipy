@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -9,4 +9,10 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
+"""# Taipy GUI for Scenario Management
+
+This package provides classes that can be used in GUI controls dedicated to scenario management.
+"""
+
 from ._init import *
+from .filters import CustomScenarioFilter, DataNodeFilter, DataNodeScenarioFilter, ScenarioFilter

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -41,5 +41,5 @@ def test_a_button_pressed(gui: Gui, helpers):
     assert gui._bindings()._get_all_scopes()[sid].x == 20  # type: ignore
     # assert for received message (message that would be sent to the front-end client)
     received_messages = ws_client.get_received()
-    helpers.assert_outward_ws_message(received_messages[0], "MU", "x", 20)
-    helpers.assert_outward_ws_message(received_messages[1], "MU", "text", "a random text")
+    helpers.assert_outward_ws_message(received_messages[0], "MU", "tpec_TpExPr_x_TPMDL_0", 20)
+    helpers.assert_outward_ws_message(received_messages[1], "MU", "tpec_TpExPr_text_TPMDL_0", "a random text")

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -21,7 +21,7 @@ class _ControlPattern(InlineProcessor):
     def extend(md, gui, priority):
         instance = _ControlPattern(_ControlPattern.__PATTERN, md)
         md.inlinePatterns.register(instance, "taipy", priority)
-        instance._gui = gui
+        instance._gui = gui  # type: ignore[attr-defined]
 
     def handleMatch(self, m, data):
-        return _MarkdownFactory.create_element(self._gui, m.group(1), m.group(2)), m.start(0), m.end(0)
+        return _MarkdownFactory.create_element(self._gui, m.group(1), m.group(2)), m.start(0), m.end(0)  # type: ignore[attr-defined]

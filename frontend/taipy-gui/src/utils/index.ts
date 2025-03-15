@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -11,7 +11,7 @@
  * specific language governing permissions and limitations under the License.
  */
 
-import { utcToZonedTime, getTimezoneOffset, formatInTimeZone } from "date-fns-tz";
+import { toZonedTime, getTimezoneOffset, formatInTimeZone } from "date-fns-tz";
 import { format } from "date-fns";
 import { sprintf } from "sprintf-js";
 import { FormatConfig } from "../context/taipyReducers";
@@ -92,8 +92,19 @@ export const getDateTime = (value: string | null | undefined, tz?: string, withT
         return null;
     }
     try {
-        return tz && tz !== "Etc/Unknown" && withTime ? utcToZonedTime(value, tz) : new Date(value);
-    } catch (e) {
+        return tz && tz !== "Etc/Unknown" && withTime ? toZonedTime(value, tz) : new Date(value);
+    } catch {
+        return null;
+    }
+};
+
+export const getTime = (value: string | null | undefined): Date | null => {
+    if (value === null || value === undefined) {
+        return null;
+    }
+    try {
+        return new Date(value);
+    } catch {
         return null;
     }
 };
@@ -105,14 +116,21 @@ export const getDateTimeString = (
     tz?: string,
     withTime: boolean = true
 ): string => {
-    if (withTime) {
-        return formatInTimeZone(
-            getDateTime(value) || "",
-            formatConf.forceTZ || !tz ? formatConf.timeZone : tz,
-            datetimeformat || formatConf.dateTime
-        );
+    const dateVal = getDateTime(value);
+    try {
+        if (withTime) {
+            return formatInTimeZone(
+                dateVal || "",
+                formatConf.forceTZ || !tz ? formatConf.timeZone : tz,
+                datetimeformat || formatConf.dateTime,
+                { useAdditionalDayOfYearTokens: true }
+            );
+        }
+        return format(dateVal || 0, datetimeformat || formatConf.date, { useAdditionalDayOfYearTokens: true });
+    } catch (e) {
+        console.warn("Invalid date format:", (e as Error).message || e);
+        return `${dateVal}`;
     }
-    return format(getDateTime(value) || 0, datetimeformat || formatConf.date);
 };
 
 export const getNumberString = (value: number, numberformat: string | undefined, formatConf: FormatConfig): string => {
@@ -121,7 +139,7 @@ export const getNumberString = (value: number, numberformat: string | undefined,
             ? sprintf(numberformat || formatConf.number, value)
             : value.toLocaleString();
     } catch (e) {
-        console.warn("getNumberString: " + (e as Error).message || e);
+        console.warn("Invalid number format:", (e as Error).message || e);
         return (
             (typeof value === "number" && value.toLocaleString()) ||
             (typeof value === "string" && (value as string)) ||
@@ -160,33 +178,24 @@ export const formatWSValue = (
         case "datetime.time":
         case "datetime":
         case "time":
-            try {
-                return getDateTimeString(value.toString(), dataFormat, formatConf);
-            } catch (e) {
-                console.error(`wrong dateformat "${dataFormat || formatConf.dateTime}"`, e);
+            if (value == "") {
+                return "";
             }
-            return getDateTimeString(value.toString(), undefined, formatConf);
+            return getDateTimeString(value.toString(), dataFormat, formatConf);
         case "datetime.date":
         case "date":
-            try {
-                return getDateTimeString(value.toString(), dataFormat, formatConf, undefined, false);
-            } catch (e) {
-                console.error(`wrong dateformat "${dataFormat || formatConf.date}"`, e);
+            if (value == "") {
+                return "";
             }
-            return getDateTimeString(value.toString(), undefined, formatConf, undefined, false);
+            return getDateTimeString(value.toString(), dataFormat, formatConf, undefined, false);
         case "int":
         case "float":
         case "number":
             if (typeof value === "string") {
-                try {
-                    if (dataType === "float") {
-                        value = parseFloat(value);
-                    } else {
-                        value = parseInt(value, 10);
-                    }
-                } catch (e) {
-                    console.error("number parse exception", e);
-                    value = NaN;
+                if (dataType === "float") {
+                    value = parseFloat(value);
+                } else {
+                    value = parseInt(value, 10);
                 }
             }
             return getNumberString(value, dataFormat, formatConf);
@@ -206,3 +215,5 @@ export const TIMEZONE_CLIENT = Intl.DateTimeFormat().resolvedOptions().timeZone;
 export const getBaseURL = (): string => {
     return window.taipyConfig?.baseURL || "/";
 };
+
+export const emptyArray = [];
